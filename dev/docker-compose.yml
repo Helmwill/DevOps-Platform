@@ -1,12 +1,16 @@
 ---
-# Dev slot — redeploys on every push to `dev` branch
+# Dev slot — frontend + backend services, redeploys on every push to `dev` branch
 #
-# Traefik route : https://dev.${DOMAIN}
-# Lifecycle     : persistent slot, container recreated on each deploy
+# Traefik routing:
+#   https://dev.${DOMAIN}/           → dashboard-frontend-dev (nginx, port 8080)
+#   https://dev.${DOMAIN}/api/*      → dashboard-backend-dev  (express, port 3000)
+#   https://dev.${DOMAIN}/health     → dashboard-backend-dev  (express, port 3000)
+#
+# Lifecycle     : persistent slot, containers recreated on each deploy
 # Auth          : basic-auth via DASHBOARD_AUTH secret (htpasswd string)
 #
 # Environment variables injected by deploy-dev.yml workflow:
-#   IMAGE_TAG       — full commit SHA of the built image
+#   IMAGE_TAG       — full commit SHA of the built images
 #   REGISTRY_URL    — container registry hostname
 #   DOMAIN          — base domain (e.g. example.com)
 #   DASHBOARD_AUTH  — htpasswd string for basic-auth
@@ -17,9 +21,9 @@ networks:
 
 services:
 
-  dashboard-dev:
-    image: ${REGISTRY_URL}/dashboard:${IMAGE_TAG:-latest}
-    container_name: dashboard-dev
+  dashboard-backend-dev:
+    image: ${REGISTRY_URL}/dashboard-backend:${IMAGE_TAG:-latest}
+    container_name: dashboard-backend-dev
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -29,11 +33,38 @@ services:
     tmpfs:
       - /tmp
     volumes:
-      # Docker socket mounted read-only — dashboard only reads container state
+      # Docker socket mounted read-only — backend only reads container state
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       NODE_ENV: development
-      DOMAIN: ${DOMAIN}
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+
+      # ---- Backend: /api/* and /health (high priority) ----
+      - "traefik.http.routers.dashboard-dev-api.rule=Host(`dev.${DOMAIN}`) && (PathPrefix(`/api`) || Path(`/health`))"
+      - "traefik.http.routers.dashboard-dev-api.entrypoints=websecure"
+      - "traefik.http.routers.dashboard-dev-api.tls=true"
+      - "traefik.http.routers.dashboard-dev-api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.dashboard-dev-api.middlewares=dashboard-dev-auth"
+      - "traefik.http.routers.dashboard-dev-api.priority=10"
+      - "traefik.http.routers.dashboard-dev-api.service=dashboard-backend-dev"
+      - "traefik.http.services.dashboard-backend-dev.loadbalancer.server.port=3000"
+
+  dashboard-frontend-dev:
+    image: ${REGISTRY_URL}/dashboard-frontend:${IMAGE_TAG:-latest}
+    container_name: dashboard-frontend-dev
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    # nginx writes to cache, pid, and tmp at runtime — provide tmpfs for each
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
     networks:
       - traefik-public
     labels:
@@ -45,15 +76,15 @@ services:
       - "traefik.http.routers.dashboard-dev-http.entrypoints=web"
       - "traefik.http.routers.dashboard-dev-http.middlewares=redirect-to-https"
 
-      # ---- HTTPS router ----
+      # ---- HTTPS router → frontend (catch-all, lower priority) ----
       - "traefik.http.routers.dashboard-dev.rule=Host(`dev.${DOMAIN}`)"
       - "traefik.http.routers.dashboard-dev.entrypoints=websecure"
       - "traefik.http.routers.dashboard-dev.tls=true"
       - "traefik.http.routers.dashboard-dev.tls.certresolver=letsencrypt"
       - "traefik.http.routers.dashboard-dev.middlewares=dashboard-dev-auth"
+      - "traefik.http.routers.dashboard-dev.priority=1"
+      - "traefik.http.routers.dashboard-dev.service=dashboard-frontend-dev"
+      - "traefik.http.services.dashboard-frontend-dev.loadbalancer.server.port=8080"
 
-      # ---- Service port ----
-      - "traefik.http.services.dashboard-dev.loadbalancer.server.port=${DASHBOARD_PORT:-3000}"
-
-      # ---- Basic-auth middleware ----
+      # ---- Basic-auth middleware (shared by both routers) ----
       - "traefik.http.middlewares.dashboard-dev-auth.basicauth.users=${DASHBOARD_AUTH}"

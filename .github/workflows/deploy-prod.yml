@@ -106,8 +106,9 @@ jobs:
                   --username '${{ secrets.REGISTRY_USER }}' \
                   --password-stdin
 
-              # Pull the exact image that was verified in QA — no rebuild
-              docker pull '${{ secrets.REGISTRY_URL }}/dashboard:'"$SHA"'
+              # Pull the exact images that were verified in QA — no rebuild
+              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-backend:'"$SHA"'
+              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-frontend:'"$SHA"'
 
               # Navigate to the production compose project directory
               cd ~/devops-platform/prod
@@ -144,11 +145,11 @@ jobs:
         # Production gets a slightly longer window than dev/QA to account for
         # any warm-up time under live traffic.
         run: |
-          echo "Checking https://${{ secrets.DOMAIN }}/health ..."
+          echo "Checking https://dashboard.${{ secrets.DOMAIN }}/health ..."
           for i in $(seq 1 18); do
             STATUS=$(curl --silent --output /dev/null --write-out "%{http_code}" \
                        --max-time 10 \
-                       "https://${{ secrets.DOMAIN }}/health" || true)
+                       "https://dashboard.${{ secrets.DOMAIN }}/health" || true)
             if [ "$STATUS" = "200" ]; then
               echo "Production health check passed (HTTP $STATUS) on attempt $i"
               exit 0
@@ -156,7 +157,7 @@ jobs:
             echo "Attempt $i: got HTTP $STATUS — retrying in 5s..."
             sleep 5
           done
-          echo "SMOKE TEST FAILED: ${{ secrets.DOMAIN }}/health did not return 200 within 90s"
+          echo "SMOKE TEST FAILED: dashboard.${{ secrets.DOMAIN }}/health did not return 200 within 90s"
           exit 1
 
       - name: Verify dashboard subdomain is reachable
@@ -218,7 +219,8 @@ jobs:
           echo "=============================================="
           echo "Production deployment complete."
           echo "Commit SHA : ${{ github.event.workflow_run.head_sha }}"
-          echo "Image      : ${{ secrets.REGISTRY_URL }}/dashboard:${{ github.event.workflow_run.head_sha }}"
-          echo "Live URL   : https://${{ secrets.DOMAIN }}"
+          echo "Backend    : ${{ secrets.REGISTRY_URL }}/dashboard-backend:${{ github.event.workflow_run.head_sha }}"
+          echo "Frontend   : ${{ secrets.REGISTRY_URL }}/dashboard-frontend:${{ github.event.workflow_run.head_sha }}"
+          echo "Live URL   : https://dashboard.${{ secrets.DOMAIN }}"
           echo "QA slot    : torn down"
           echo "=============================================="

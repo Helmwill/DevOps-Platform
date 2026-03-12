@@ -1,7 +1,11 @@
 ---
-# QA slot — ephemeral, spun up after dev deploy, torn down after prod deploy
+# QA slot — frontend + backend services, ephemeral (spun up for gauntlet, torn down after prod deploy)
 #
-# Traefik route : https://qa.${DOMAIN}
+# Traefik routing:
+#   https://qa.${DOMAIN}/           → dashboard-frontend-qa (nginx, port 8080)
+#   https://qa.${DOMAIN}/api/*      → dashboard-backend-qa  (express, port 3000)
+#   https://qa.${DOMAIN}/health     → dashboard-backend-qa  (express, port 3000)
+#
 # Lifecycle     : ephemeral — `docker compose up -d` / `docker compose down`
 # Auth          : basic-auth via DASHBOARD_AUTH secret (htpasswd string)
 #
@@ -17,9 +21,9 @@ networks:
 
 services:
 
-  dashboard-qa:
-    image: ${REGISTRY_URL}/dashboard:${IMAGE_TAG:-latest}
-    container_name: dashboard-qa
+  dashboard-backend-qa:
+    image: ${REGISTRY_URL}/dashboard-backend:${IMAGE_TAG:-latest}
+    container_name: dashboard-backend-qa
     # no restart policy — QA slot is ephemeral and torn down after prod deploy
     restart: "no"
     security_opt:
@@ -30,11 +34,39 @@ services:
     tmpfs:
       - /tmp
     volumes:
-      # Docker socket mounted read-only — dashboard only reads container state
+      # Docker socket mounted read-only — backend only reads container state
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       NODE_ENV: test
-      DOMAIN: ${DOMAIN}
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+
+      # ---- Backend: /api/* and /health (high priority) ----
+      - "traefik.http.routers.dashboard-qa-api.rule=Host(`qa.${DOMAIN}`) && (PathPrefix(`/api`) || Path(`/health`))"
+      - "traefik.http.routers.dashboard-qa-api.entrypoints=websecure"
+      - "traefik.http.routers.dashboard-qa-api.tls=true"
+      - "traefik.http.routers.dashboard-qa-api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.dashboard-qa-api.middlewares=dashboard-qa-auth"
+      - "traefik.http.routers.dashboard-qa-api.priority=10"
+      - "traefik.http.routers.dashboard-qa-api.service=dashboard-backend-qa"
+      - "traefik.http.services.dashboard-backend-qa.loadbalancer.server.port=3000"
+
+  dashboard-frontend-qa:
+    image: ${REGISTRY_URL}/dashboard-frontend:${IMAGE_TAG:-latest}
+    container_name: dashboard-frontend-qa
+    # no restart policy — QA slot is ephemeral and torn down after prod deploy
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    # nginx writes to cache, pid, and tmp at runtime — provide tmpfs for each
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
     networks:
       - traefik-public
     labels:
@@ -46,15 +78,15 @@ services:
       - "traefik.http.routers.dashboard-qa-http.entrypoints=web"
       - "traefik.http.routers.dashboard-qa-http.middlewares=redirect-to-https"
 
-      # ---- HTTPS router ----
+      # ---- HTTPS router → frontend (catch-all, lower priority) ----
       - "traefik.http.routers.dashboard-qa.rule=Host(`qa.${DOMAIN}`)"
       - "traefik.http.routers.dashboard-qa.entrypoints=websecure"
       - "traefik.http.routers.dashboard-qa.tls=true"
       - "traefik.http.routers.dashboard-qa.tls.certresolver=letsencrypt"
       - "traefik.http.routers.dashboard-qa.middlewares=dashboard-qa-auth"
+      - "traefik.http.routers.dashboard-qa.priority=1"
+      - "traefik.http.routers.dashboard-qa.service=dashboard-frontend-qa"
+      - "traefik.http.services.dashboard-frontend-qa.loadbalancer.server.port=8080"
 
-      # ---- Service port ----
-      - "traefik.http.services.dashboard-qa.loadbalancer.server.port=${DASHBOARD_PORT:-3000}"
-
-      # ---- Basic-auth middleware ----
+      # ---- Basic-auth middleware (shared by both routers) ----
       - "traefik.http.middlewares.dashboard-qa-auth.basicauth.users=${DASHBOARD_AUTH}"
