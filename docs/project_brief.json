@@ -1,16 +1,16 @@
 {
   "project_id": "proj_vps_devops_platform",
   "project_name": "VPS Self-Hosted DevOps Platform",
-  "description": "A fully self-hosted DevOps platform running on a VPS, centred around a custom container management dashboard, with Gitea for source control and CI/CD, Traefik for reverse proxy and SSL, and a full security gauntlet pipeline.",
+  "description": "A fully self-hosted DevOps platform running on a VPS, centred around a custom container management dashboard, with GitHub for source control and CI/CD, Traefik for reverse proxy and SSL, and a full security gauntlet pipeline.",
 
   "stack": {
-    "source_control": "Gitea",
-    "cicd_platform": "Gitea Actions",
-    "container_registry": "Gitea built-in registry",
+    "source_control": "GitHub",
+    "cicd_platform": "GitHub Actions",
+    "container_registry": "GitHub Container Registry (ghcr.io) or operator-configured OCI registry",
     "reverse_proxy": "Traefik",
     "ssl": "Traefik + Let's Encrypt (automatic)",
     "iac_tool": "Docker Compose",
-    "secret_store": "Gitea Actions built-in secret store",
+    "secret_store": "GitHub Actions repository/environment secrets",
     "sast_tool": "Semgrep",
     "cve_iac_scanner": "Trivy",
     "dast_tool": "OWASP ZAP",
@@ -67,7 +67,7 @@
     "Agents never handle, request, store, or transmit credentials",
     "Credential needed → AWAITING_HUMAN_SECRET (full halt)",
     "Credential detected in context → CREDENTIAL_LEAKED (full halt)",
-    "Secrets via Gitea Actions secret store only",
+    "Secrets via GitHub Actions repository/environment secrets only",
     "CRITICAL/HIGH findings cannot be auto-suppressed",
     "3 gauntlet failures on same story → NEEDS_HUMAN state"
   ],

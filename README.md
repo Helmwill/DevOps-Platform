@@ -1,9 +1,9 @@
 # VPS Self-Hosted DevOps Platform
 
 A fully self-hosted DevOps platform running on a single VPS (or small cluster of VMs).
-It combines a Traefik reverse proxy, Gitea Git hosting with built-in CI, and a custom
-web dashboard — all wired together over a shared Docker network with automatic TLS via
-Let's Encrypt. No cloud IaC required.
+It combines a Traefik reverse proxy, GitHub Actions CI/CD, and a custom web dashboard —
+all wired together over a shared Docker network with automatic TLS via Let's Encrypt.
+No cloud IaC required. Source control and CI/CD pipelines run on GitHub.
 
 ---
 
@@ -17,17 +17,13 @@ Traefik (ports 80/443)          infra/traefik/
    |  Reverse proxy, TLS termination, HTTP->HTTPS redirect
    |  Subdomains: traefik.<DOMAIN>
    |
-   +-> Gitea                    infra/gitea/
-   |      Self-hosted Git service + Actions CI runner
-   |      Subdomains: gitea.<DOMAIN>
-   |
    +-> Dashboard                infra/dashboard/
           Custom web dashboard (read-only Docker socket)
           Subdomains: dashboard.<DOMAIN>
 
 All services communicate over the shared `traefik-public` Docker bridge network.
-Gitea's database uses a separate internal network (`gitea-internal`) that is not
-reachable from outside the stack.
+CI/CD pipelines run on GitHub Actions (GitHub-hosted runners); deployments are
+pushed to the VPS via SSH using secrets stored in GitHub repository settings.
 ```
 
 ---
@@ -87,10 +83,7 @@ network traefik-public declared as external, but could not be found
    # 1. Traefik first -- it must be up before any other stack
    cd infra/traefik && docker compose up -d
 
-   # 2. Gitea
-   cd infra/gitea  && docker compose up -d
-
-   # 3. Dashboard
+   # 2. Dashboard
    cd infra/dashboard && docker compose up -d
    ```
 

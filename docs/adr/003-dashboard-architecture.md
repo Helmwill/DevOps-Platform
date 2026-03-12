@@ -45,7 +45,7 @@ The dashboard is implemented as a two-process application in a single Docker con
 4. The container control endpoints (start, stop, restart) are gated behind authentication. Unauthenticated requests return HTTP 401 before any Docker API call is made.
 5. The backend exposes no raw Docker API passthrough. Only the specific operations listed in the API contract are implemented; there is no generic proxy to the socket.
 
-**Authentication:** A simple login page (username + password) issues a signed HTTP-only session cookie (short TTL). The bcrypt-hashed password is injected at runtime from the Gitea Actions secret store. There is no plaintext credential in any image layer, Compose file, or source file.
+**Authentication:** A simple login page (username + password) issues a signed HTTP-only session cookie (short TTL). The bcrypt-hashed password is injected at runtime from the GitHub Actions secret store. There is no plaintext credential in any image layer, Compose file, or source file.
 
 **Serving:** The Node.js process serves both the React SPA (static files) and the `/api/*` endpoints on a single port. Traefik routes `dashboard.domain.com` to this port on the internal Docker network. TLS termination occurs at Traefik; the backend listens on plain HTTP internally.
 

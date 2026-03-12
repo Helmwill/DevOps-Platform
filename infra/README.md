@@ -1,7 +1,8 @@
 # Infra — Self-Hosted VPS DevOps Platform
 
 All stacks run as Docker Compose services behind a shared Traefik reverse proxy.
-No cloud IaC is used; everything runs on a single VPS (or a small cluster of VMs).
+Source control and CI/CD pipelines run on GitHub (GitHub Actions).
+Application workloads (Traefik, dashboard) run on the VPS.
 
 ---
 
@@ -9,12 +10,13 @@ No cloud IaC is used; everything runs on a single VPS (or a small cluster of VMs
 
 | Requirement | Notes |
 |---|---|
-| **Docker** ≥ 24 | `curl -fsSL https://get.docker.com | sh` |
+| **Docker** >= 24 | `curl -fsSL https://get.docker.com | sh` |
 | **Docker Compose** v2 plugin | Bundled with Docker Desktop; on Linux: `apt install docker-compose-plugin` |
 | **Domain name** | You must own a domain whose DNS you control |
-| **DNS A records** | Point `gitea.<DOMAIN>`, `dashboard.<DOMAIN>`, and `traefik.<DOMAIN>` to your VPS public IP |
+| **DNS A records** | Point `dashboard.<DOMAIN>` and `traefik.<DOMAIN>` to your VPS public IP |
 | **Ports 80 & 443 open** | Required for HTTP-01 ACME challenge and HTTPS traffic |
 | **`htpasswd` utility** | `apt install apache2-utils` — used to generate basic-auth credential strings |
+| **GitHub repository** | Source code hosted on GitHub; secrets configured in repository/environment settings |
 
 ---
 
@@ -24,8 +26,6 @@ No cloud IaC is used; everything runs on a single VPS (or a small cluster of VMs
 infra/
 ├── traefik/
 │   └── docker-compose.yml   # Reverse proxy + TLS termination
-├── gitea/
-│   └── docker-compose.yml   # Git hosting + Actions runner
 ├── dashboard/
 │   └── docker-compose.yml   # Custom web dashboard (placeholder image)
 └── README.md                # This file
@@ -47,7 +47,9 @@ docker network create traefik-public
 ## Environment Variables & Secrets
 
 Never store secrets in the compose files themselves.
-Use a `.env` file (excluded from version control) or a secrets manager.
+Use a `.env` file (excluded from version control) or export variables in your shell.
+Pipeline secrets (registry credentials, SSH deploy key, etc.) are stored in
+GitHub repository/environment settings — not in `.env` files on the VPS.
 
 ### Global (all stacks)
 
@@ -62,27 +64,11 @@ Use a `.env` file (excluded from version control) or a secrets manager.
 |---|---|---|
 | `TRAEFIK_DASHBOARD_AUTH` | htpasswd string for dashboard basic-auth | `htpasswd -nb admin <password>` |
 
-### Gitea stack
-
-| Variable | Description | Notes |
-|---|---|---|
-| `GITEA_DB_PASSWORD` | PostgreSQL password for Gitea | Strong random string |
-| `GITEA_DB_NAME` | Database name | Default: `gitea` |
-| `GITEA_DB_USER` | Database user | Default: `gitea` |
-| `GITEA_SECRET_KEY` | Gitea secret key | `openssl rand -hex 32` |
-| `GITEA_INTERNAL_TOKEN` | Gitea internal token | `openssl rand -hex 32` |
-| `GITEA_APP_NAME` | Display name for the Gitea instance | Default: `Gitea` |
-| `GITEA_SSH_PORT` | Host port for git+ssh | Default: `2222` |
-| `GITEA_RUNNER_TOKEN` | Runner registration token | Generated in Gitea admin UI |
-| `GITEA_RUNNER_NAME` | Display name for the runner | Default: `vps-runner-01` |
-| `GITEA_RUNNER_LABELS` | Runner label:image mappings | Default: `ubuntu-latest:docker://node:20-bullseye` |
-| `GITEA_MAILER_ENABLED` | Enable Gitea mailer | Default: `false` |
-
 ### Dashboard stack
 
 | Variable | Description | Notes |
 |---|---|---|
-| `REGISTRY_URL` | Container registry hostname | e.g. `registry.example.com` or `ghcr.io/org` |
+| `REGISTRY_URL` | Container registry hostname | e.g. `ghcr.io/your-org` |
 | `IMAGE_TAG` | Dashboard image tag to deploy | e.g. `latest` or a SHA |
 | `DASHBOARD_AUTH` | htpasswd string for dashboard basic-auth | `htpasswd -nb admin <password>` |
 | `DASHBOARD_PORT` | Internal port the dashboard app listens on | Default: `3000` |
@@ -96,12 +82,6 @@ ACME_EMAIL=ops@example.com
 
 # Traefik
 TRAEFIK_DASHBOARD_AUTH=admin:$$apr1$$...   # escape $ signs with $$ in .env files
-
-# Gitea
-GITEA_DB_PASSWORD=changeme_strong_password
-GITEA_SECRET_KEY=<openssl rand -hex 32 output>
-GITEA_INTERNAL_TOKEN=<openssl rand -hex 32 output>
-GITEA_RUNNER_TOKEN=<token from Gitea admin UI>
 
 # Dashboard
 REGISTRY_URL=ghcr.io/your-org
@@ -137,27 +117,7 @@ docker compose logs -f traefik  # watch for ACME certificate acquisition
 Verify Traefik is running and its dashboard is reachable at `https://traefik.<DOMAIN>`
 (protected by `TRAEFIK_DASHBOARD_AUTH`).
 
-### Step 3 — Deploy Gitea
-
-```bash
-cd infra/gitea
-cp /path/to/your/.env .env
-docker compose up -d
-docker compose logs -f gitea    # wait for "Starting new Web server"
-```
-
-1. Open `https://gitea.<DOMAIN>` in a browser and complete the initial setup wizard.
-2. Create a site-admin account.
-3. Navigate to **Site Administration → Runners → Create new runner** and copy the
-   registration token into `GITEA_RUNNER_TOKEN` in your `.env`.
-4. Restart the runner so it registers with the token:
-
-```bash
-docker compose restart gitea-runner
-docker compose logs -f gitea-runner  # confirm "Runner registered successfully"
-```
-
-### Step 4 — Deploy the Dashboard
+### Step 3 — Deploy the Dashboard
 
 ```bash
 cd infra/dashboard
@@ -169,7 +129,7 @@ The dashboard will be available at `https://dashboard.<DOMAIN>` behind basic-aut
 
 > **Note:** The dashboard image (`${REGISTRY_URL}/dashboard:${IMAGE_TAG}`) is a
 > placeholder. Replace it with the actual image once the Code Builder produces and
-> pushes the dashboard image to your registry.
+> pushes the dashboard image to your registry (`ghcr.io` by default).
 
 ---
 
@@ -202,6 +162,6 @@ docker compose up -d --remove-orphans
 |---|---|---|
 | Certificate not issued | Port 80 blocked by firewall | Open port 80 on the VPS firewall |
 | `traefik-public` network not found | Network not created before compose up | `docker network create traefik-public` |
-| Gitea runner not registering | Wrong or expired `GITEA_RUNNER_TOKEN` | Re-generate token in Gitea admin UI |
 | Dashboard returns 401 | Malformed `DASHBOARD_AUTH` | Re-run `htpasswd -nb` and double all `$` signs in `.env` |
-| DNS not resolving | A records not propagated | Wait for TTL or check DNS with `dig gitea.<DOMAIN>` |
+| DNS not resolving | A records not propagated | Wait for TTL or check DNS with `dig dashboard.<DOMAIN>` |
+| GitHub Actions deploy fails | SSH key or VPS secrets misconfigured | Verify `VPS_SSH_KEY`, `VPS_USER`, `VPS_HOST` secrets in GitHub Settings |

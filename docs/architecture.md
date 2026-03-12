@@ -13,9 +13,9 @@ Confirmed: 2026-03-12
 
 | Concern | Chosen Technology | Key Reason |
 |---|---|---|
-| Source control | Gitea | Self-hosted, Git-compatible, built-in registry and Actions |
-| CI/CD | Gitea Actions | Native to Gitea, GitHub Actions YAML-compatible |
-| Container registry | Gitea built-in OCI registry | Co-located with SCM, no additional service |
+| Source control | GitHub | Native Codespace integration; no additional self-hosted service |
+| CI/CD | GitHub Actions | Full community marketplace; native YAML on GitHub-hosted runners |
+| Container registry | GitHub Container Registry (ghcr.io) | Co-located with SCM; operator may substitute any OCI registry |
 | Reverse proxy / TLS | Traefik v3 | Docker-native label routing, automatic Let's Encrypt |
 | Infrastructure as Code | Docker Compose | Single-file declarative stacks, no orchestrator required |
 | Dashboard backend | Node.js 20 LTS (TypeScript) | Lightweight, native Docker SDK support |
@@ -24,7 +24,7 @@ Confirmed: 2026-03-12
 | CVE + IaC scan | Trivy | Scans images, Compose files, and Dockerfiles in one tool |
 | DAST | OWASP ZAP | Industry standard, automation-friendly baseline scan |
 | Credential detection | Gitleaks | Git-history aware, runs pre-push and in pipeline |
-| Secret storage | Gitea Actions secret store | Secrets never leave the VPS; no third-party vault |
+| Secret storage | GitHub Actions repository/environment secrets | Encrypted at rest; masked in logs automatically |
 | Performance testing | k6 | Scriptable, p99 latency assertions in CI |
 
 ### 2.1 Alternatives Considered
@@ -36,8 +36,8 @@ Confirmed: 2026-03-12
 
 #### CI/CD
 - **Jenkins** — Mature but heavy JVM footprint; plugin maintenance burden on a single VPS.
-- **Drone CI** — Minimal resource use, but a separate product and community; Gitea Actions reuses the same SCM event bus.
-- **GitHub Actions (hosted)** — Requires outbound runner registration and exposes code to GitHub infrastructure; violates zero-cloud constraint.
+- **Drone CI** — Minimal resource use, but a separate product and separate secret store to maintain.
+- **Gitea self-hosted** — Evaluated but eliminated: project uses GitHub Codespaces, making a second self-hosted SCM redundant. See ADR-005.
 
 #### Container Orchestration / IaC
 - **Kubernetes (k3s)** — Adds etcd, control-plane overhead, and operational complexity disproportionate to a single-node VPS.
@@ -63,9 +63,9 @@ graph TD
             TR["Traefik\n(edge router + TLS)"]
         end
 
-        subgraph SCM_CI ["SCM / CI Layer"]
-            GT["Gitea\n(SCM + Actions + Registry)"]
-            RN["Gitea Actions Runner\n(rootless Docker-in-Docker)"]
+        subgraph SCM_CI ["SCM / CI Layer (GitHub-hosted)"]
+            GT["GitHub\n(SCM + Actions + ghcr.io)"]
+            RN["GitHub Actions Runner\n(ubuntu-latest, GitHub-hosted)"]
         end
 
         subgraph App ["Application Layer"]
@@ -89,7 +89,6 @@ graph TD
 
     Internet -->|"HTTPS :443"| TR
     TR -->|"dashboard.domain"| DB_FE
-    TR -->|"gitea.domain"| GT
     GT -->|"triggers"| RN
     RN -->|"push image"| GT
     RN --> SG
@@ -145,22 +144,22 @@ Browser
 ### 6.2 CI/CD Push Flow
 
 ```
-Developer git push
-  → Gitea webhook → Gitea Actions Runner
+Developer git push (from Codespace or local)
+  → GitHub webhook → GitHub Actions Runner (ubuntu-latest)
   → T1: npm test (unit + integration)
   → T2: semgrep scan (source + IaC)
-  → T3: trivy fs (Dockerfiles + Compose)
-  → docker build → tag with SHA → push to Gitea Registry
-  → deploy to QA slot (docker compose up)
+  → T3: trivy config (Dockerfiles + Compose)
+  → docker build → tag with SHA → push to ghcr.io (or REGISTRY_URL)
+  → deploy to QA slot via SSH (docker compose up)
   → T4: zap-baseline.py against QA URL + k6 run
   → T5: trivy image (published digest) + gitleaks detect
-  → [AWAITING_HUMAN_APPROVAL — Helmwill]
+  → [AWAITING_HUMAN_APPROVAL — Helmwill in GitHub environment gate]
   → deploy to prod (same image digest, compose up)
 ```
 
 ### 6.3 Secret Handling
 
-Secrets (TLS email, registry credentials, basic-auth password hash) are stored exclusively in the Gitea Actions secret store. They are injected as environment variables at runtime and are never written to files, logs, or image layers. Any agent that encounters a credential in context must halt with `CREDENTIAL_LEAKED`.
+Secrets (TLS email, registry credentials, basic-auth password hash, SSH deploy key) are stored exclusively in GitHub repository and environment secrets. They are injected as environment variables at pipeline runtime and are never written to files, logs, or image layers. GitHub Actions automatically masks secret values in log output. Any agent that encounters a credential in context must halt with `CREDENTIAL_LEAKED`.
 
 ---
 
@@ -205,7 +204,7 @@ traefik.http.middlewares.<name>-auth.basicauth.users=<hashed>
 |---|---|
 | Availability | Single-node; no HA guarantee. Platform-level SLA defers to VPS provider uptime. |
 | TLS | All public-facing routes HTTPS only. Traefik redirects :80 to :443. Certificates auto-renewed via ACME. |
-| Authentication | Dashboard protected by basic auth (bcrypt hashed credentials). Gitea uses its own user/token auth. |
+| Authentication | Dashboard protected by basic auth (bcrypt hashed credentials). GitHub handles SCM authentication natively. |
 | Authorisation | Dashboard has no role model; any authenticated user has full container control. |
 | Performance | Dashboard API p99 < 500 ms under normal load (enforced by k6 in T4). |
 | Security scanning | All five gauntlet gates run on every PR. CRITICAL/HIGH findings are hard blocks; cannot be auto-suppressed. |

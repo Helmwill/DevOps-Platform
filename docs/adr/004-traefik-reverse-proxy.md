@@ -4,7 +4,7 @@
 
 ## Context
 
-All platform services (Gitea, the dashboard, and ephemeral QA slots) must be reachable over HTTPS via human-readable subdomains. The edge router must:
+All platform services (the dashboard, Traefik itself, and ephemeral QA slots) must be reachable over HTTPS via human-readable subdomains. The edge router must:
 
 - Terminate TLS for all subdomains using certificates that are automatically provisioned and renewed — no manual `certbot` cronjobs.
 - Discover new services dynamically when Docker Compose stacks are deployed, without requiring a reload of the router's configuration.
@@ -17,7 +17,6 @@ Routing must support at minimum:
 
 | Subdomain | Service |
 |---|---|
-| `gitea.domain` | Gitea (HTTP + SSH passthrough) |
 | `dashboard.domain` | Dashboard backend (Node.js) |
 | `qa-<pr-number>.domain` | Ephemeral QA environment per PR |
 
@@ -42,7 +41,7 @@ Traefik v3 is adopted as the sole edge router and TLS terminator for the platfor
 - **TLS** is handled by the built-in Let's Encrypt ACME resolver (`letsencrypt` named resolver). Certificates are stored in an `acme.json` volume mount. The TLS challenge method is HTTP-01 (port 80 must be reachable from the internet during initial issuance). Certificates auto-renew 30 days before expiry.
 - **HTTP to HTTPS redirect** is implemented as a global Traefik entrypoint redirect: all traffic arriving on `:80` is redirected to `:443`.
 - **Middleware** for basic auth (dashboard) and any future security headers (HSTS, CSP) is declared as Traefik middleware labels on the relevant service.
-- **Gitea SSH** is exposed via a Traefik TCP router on port 22 (or a non-standard SSH port) using SNI passthrough or direct TCP routing, so that `git push` over SSH continues to work through Traefik.
+- **VPS SSH** for deploy operations is accessed directly on the VPS host port (not routed through Traefik). Git operations use GitHub over HTTPS.
 
 **Ephemeral QA routes:** When the CI pipeline deploys a QA stack for PR `#42`, the Compose override file for that stack sets `traefik.http.routers.qa-42.rule=Host("qa-42.domain")`. Traefik discovers this route automatically. When the QA stack is torn down, Traefik removes the route automatically.
 

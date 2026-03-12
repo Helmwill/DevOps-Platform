@@ -8,7 +8,6 @@
 #
 # Sub-stacks:
 #   infra/traefik/    — Traefik v2 reverse proxy with TLS termination
-#   infra/gitea/      — Gitea Git hosting and Actions CI runner
 #   infra/dashboard/  — Custom web dashboard (placeholder image)
 #
 # Before deploying any sub-stack, create the shared network once:

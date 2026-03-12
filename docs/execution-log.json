@@ -27,9 +27,9 @@
       "actor": "orchestrator",
       "detail": "All 4 planning agents completed successfully",
       "outputs": {
-        "architect": ["docs/architecture.md", "docs/adr/001-tech-stack.md", "docs/adr/002-docker-compose-iac.md", "docs/adr/003-dashboard-architecture.md", "docs/adr/004-traefik-reverse-proxy.md", "docs/adr/005-gitea-cicd.md"],
-        "infra": ["infra/traefik/docker-compose.yml", "infra/gitea/docker-compose.yml", "infra/dashboard/docker-compose.yml", "infra/README.md"],
-        "cicd_builder": [".gitea/workflows/pr-gate.yml", ".gitea/workflows/deploy-dev.yml", ".gitea/workflows/deploy-qa.yml", ".gitea/workflows/deploy-prod.yml"],
+        "architect": ["docs/architecture.md", "docs/adr/001-tech-stack.md", "docs/adr/002-docker-compose-iac.md", "docs/adr/003-dashboard-architecture.md", "docs/adr/004-traefik-reverse-proxy.md", "docs/adr/005-github-cicd.md"],
+        "infra": ["infra/traefik/docker-compose.yml", "infra/dashboard/docker-compose.yml", "infra/README.md"],
+        "cicd_builder": [".github/workflows/pr-gate.yml", ".github/workflows/deploy-dev.yml", ".github/workflows/deploy-qa.yml", ".github/workflows/deploy-prod.yml"],
         "sprint_planner": ["docs/sprint-plan.md"]
       }
     },
@@ -43,5 +43,20 @@
     }
   ],
   "next_gate": "PLANNING_PR_APPROVAL",
-  "next_gate_action": "Review and approve the Planning PR. Reply 'execute' to unlock Story execution."
+  "next_gate_action": "Review and approve the Planning PR. Reply 'execute' to unlock Story execution.",
+  "amendments": [
+    {
+      "timestamp": "2026-03-12",
+      "event": "PLATFORM_DECISION_CHANGED",
+      "actor": "human",
+      "detail": "SCM/CI platform switched from Gitea (self-hosted) to GitHub + GitHub Actions. Rationale: project runs in GitHub Codespace; self-hosting a second SCM is redundant. See ADR-005.",
+      "changes": [
+        "Removed infra/gitea/docker-compose.yml",
+        "Removed .gitea/workflows/ directory",
+        "Created .github/workflows/ with migrated workflow files (gitea.* context → github.*)",
+        "Replaced docs/adr/005-gitea-cicd.md with docs/adr/005-github-cicd.md",
+        "Updated docs/architecture.md, docs/adr/001-tech-stack.md, docs/sprint-plan.md"
+      ]
+    }
+  ]
 }

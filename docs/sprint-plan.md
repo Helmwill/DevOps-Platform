@@ -78,19 +78,20 @@ Stands up the core networking and service infrastructure. All other epics depend
 
 ---
 
-### Story 1.3 — Gitea SCM Stack (Git + Registry + Actions Runner)
+### Story 1.3 — GitHub Repository & Actions Configuration
 
-- **Points:** 5
+- **Points:** 3
 - **Acceptance:**
-  - Gitea deployed via Docker Compose with persistent volume for repos and data.
-  - Built-in container registry enabled and reachable at `registry.domain.com` via Traefik.
-  - At least one Gitea Actions runner registered and in `online` state.
-  - `https://git.domain.com` resolves with valid TLS certificate.
-  - Admin account creation completed through human gate `credential_actions` (agent does NOT store the password).
-  - Repository `devops-platform/dashboard` created in Gitea.
+  - GitHub repository confirmed as the canonical SCM (already in use via Codespace).
+  - GitHub Actions workflow files present at `.github/workflows/` (pr-gate, deploy-dev, deploy-qa, deploy-prod).
+  - GitHub Environments `dev`, `qa`, `production` created in repository settings; `production` has Helmwill as required reviewer.
+  - All required secrets added to repository/environment settings via human gate `credential_actions` (agent does NOT store values).
+  - Container registry choice documented (default: `ghcr.io`); `REGISTRY_URL` secret set.
+  - `pr-gate.yml` runs successfully on a test PR (lint, unit-test, sast, iac-scan jobs all green).
 - **Assigned agent:** Infra
 - **Depends on:** 1.2
 - **Parallel safe:** no
+- **Note:** Replaces original Gitea self-hosted SCM story. See ADR-005 for rationale.
 
 ---
 
@@ -255,7 +256,7 @@ Protects the dashboard from unauthenticated access via Traefik basic auth middle
 - **Points:** 3
 - **Acceptance:**
   - `basicauth` middleware configured in Traefik and attached to the `dashboard.domain.com` router.
-  - Credentials stored exclusively as a Gitea Actions secret (`DASHBOARD_HTPASSWD`); the agent does NOT generate or read the plaintext password — human gate `credential_actions` is invoked.
+  - Credentials stored exclusively as a GitHub Actions secret (`DASHBOARD_HTPASSWD`); the agent does NOT generate or read the plaintext password — human gate `credential_actions` is invoked.
   - Unauthenticated request to `dashboard.domain.com` returns HTTP 401 with `WWW-Authenticate` header.
   - Authenticated request (valid credentials) returns HTTP 200.
   - Middleware configuration passes Trivy IaC scan.
@@ -282,7 +283,7 @@ Protects the dashboard from unauthenticated access via Traefik basic auth middle
 
 ## Epic 5 — CI/CD Pipeline
 
-Wires up all five gauntlet stages in Gitea Actions for the dashboard repository.
+Wires up all five gauntlet stages in GitHub Actions for the dashboard repository.
 
 ---
 
@@ -290,7 +291,7 @@ Wires up all five gauntlet stages in Gitea Actions for the dashboard repository.
 
 - **Points:** 3
 - **Acceptance:**
-  - Gitea Actions workflow file `.gitea/workflows/ci.yml` created.
+  - GitHub Actions workflow file `.github/workflows/pr-gate.yml` updated with T1 job.
   - T1 job: runs `npm test` for backend and `npm test` for frontend; fails workflow on any test failure.
   - Coverage report published as a workflow artifact; pipeline fails if coverage < 80 %.
   - Workflow triggers on push to any branch and on PR open/sync.
@@ -353,7 +354,7 @@ Wires up all five gauntlet stages in Gitea Actions for the dashboard repository.
 - **Acceptance:**
   - T5 job runs `gitleaks detect` on the full git history; any secret detected = hard block.
   - T5 also runs a final `trivy image` CVE scan on the images tagged for promotion.
-  - If all gates pass, the workflow tags the image with the git SHA digest and pushes to the Gitea container registry.
+  - If all gates pass, the workflow tags the image with the git SHA digest and pushes to the container registry (`ghcr.io` or `REGISTRY_URL`).
   - Promotion to prod is blocked until the `prod_deployment_approval` human gate is acknowledged by Helmwill.
   - Workflow status badge embedded in the repository README.
 - **Assigned agent:** CI/CD Builder
@@ -373,7 +374,7 @@ Health checks, smoke tests, and pipeline status visibility ensure the platform i
 - **Points:** 2
 - **Acceptance:**
   - `HEALTHCHECK` instructions added to all Dockerfiles (backend, frontend).
-  - Docker Compose `healthcheck` blocks configured for Traefik, Gitea, and dashboard containers.
+  - Docker Compose `healthcheck` blocks configured for Traefik and dashboard containers.
   - Unhealthy containers surface as `errored` status in the dashboard container list (leverages Story 2.2 logic).
   - `docker compose ps` shows all services as `healthy` after a clean `up -d`.
 - **Assigned agent:** Infra
@@ -389,7 +390,7 @@ Health checks, smoke tests, and pipeline status visibility ensure the platform i
   - A smoke test script (`scripts/smoke.sh` or k6 script) verifies: dashboard returns HTTP 200, `/api/health` returns `{ status: "ok" }`, `/api/containers` returns a non-empty array, `/api/stats` returns valid JSON.
   - Smoke tests run as the final step of the `prod` deployment workflow after Helmwill approves.
   - If any smoke test fails, the deployment is automatically rolled back to the previous image digest.
-  - Gitea Actions workflow badge for the `main` branch visible on the repository landing page.
+  - GitHub Actions workflow badge for the `main` branch visible on the repository landing page.
   - Execution log (`docs/execution-log.json`) updated with deployment timestamp and smoke test result.
 - **Assigned agent:** CI/CD Builder
 - **Depends on:** 5.5, 6.1
@@ -402,7 +403,7 @@ Health checks, smoke tests, and pipeline status visibility ensure the platform i
 ```
 1.1 (Network Scaffold)
  └─ 1.2 (Traefik + SSL)
-     └─ 1.3 (Gitea Stack)
+     └─ 1.3 (GitHub Actions Config)
          └─ 1.4 (Env Routing)
 
 1.1 ─────────────────────────┐
@@ -448,7 +449,7 @@ Health checks, smoke tests, and pipeline status visibility ensure the platform i
 | Sprint | Stories | Focus | Points |
 |--------|---------|-------|--------|
 | 1 | 1.1, 1.2 | Network scaffold + Traefik/SSL | 3 + 5 = **8** |
-| 2 | 1.3, 1.4 | Gitea stack + environment routing | 5 + 3 = **8** |
+| 2 | 1.3, 1.4 | GitHub Actions config + environment routing | 3 + 3 = **6** |
 | 3 | 2.1, 3.1 | Backend scaffold + Frontend scaffold (parallel) | 3 + 2 = **5** |
 | 4 | 2.2, 4.2 | Container list endpoint + socket hardening (parallel) | 3 + 2 = **5** |
 | 5 | 2.3, 2.4 | Container controls + stats endpoint (parallel) | 3 + 5 = **8** |
@@ -475,13 +476,13 @@ Health checks, smoke tests, and pipeline status visibility ensure the platform i
 
 | Epic | Stories | Points |
 |------|---------|--------|
-| 1 — Foundation | 1.1, 1.2, 1.3, 1.4 | 3 + 5 + 5 + 3 = **16** |
+| 1 — Foundation | 1.1, 1.2, 1.3, 1.4 | 3 + 5 + 3 + 3 = **14** |
 | 2 — Dashboard Backend | 2.1, 2.2, 2.3, 2.4 | 3 + 3 + 3 + 5 = **14** |
 | 3 — Dashboard Frontend | 3.1, 3.2, 3.3, 3.4 | 2 + 5 + 3 + 2 = **12** |
 | 4 — Auth & Security | 4.1, 4.2 | 3 + 2 = **5** |
 | 5 — CI/CD Pipeline | 5.1, 5.2, 5.3, 5.4, 5.5 | 3 + 3 + 3 + 8 + 5 = **22** |
 | 6 — Observability | 6.1, 6.2 | 2 + 3 = **5** |
-| **Grand Total** | **17 stories** | **74 points** |
+| **Grand Total** | **17 stories** | **72 points** |
 
 ---
 
