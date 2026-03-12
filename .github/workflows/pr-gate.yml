@@ -24,12 +24,36 @@ concurrency:
 jobs:
 
   # ---------------------------------------------------------------------------
+  # CHECK — Detect whether Node.js code exists yet
+  # lint and unit-test are skipped until package.json is present (pre-Epic 2).
+  # ---------------------------------------------------------------------------
+  check-node:
+    name: Check for Node.js project
+    runs-on: ubuntu-latest
+    outputs:
+      has_node: ${{ steps.detect.outputs.has_node }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Detect package.json
+        id: detect
+        run: |
+          if [ -f package.json ]; then
+            echo "has_node=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_node=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ---------------------------------------------------------------------------
   # LINT — ESLint
   # Catches code-style violations and basic logic errors before any tests run.
+  # Skipped when no package.json exists (infra-only PRs before Epic 2).
   # ---------------------------------------------------------------------------
   lint:
     name: Lint (ESLint)
     runs-on: ubuntu-latest
+    needs: check-node
+    if: needs.check-node.outputs.has_node == 'true'
 
     steps:
       - name: Checkout source
@@ -52,10 +76,13 @@ jobs:
   # UNIT TEST — Jest with coverage gate
   # T1: Unit tests must pass AND coverage must be >=80% on all metrics.
   # Hard block: job fails (non-zero exit) if coverage threshold is not met.
+  # Skipped when no package.json exists (infra-only PRs before Epic 2).
   # ---------------------------------------------------------------------------
   unit-test:
     name: Unit Tests (Jest ≥80% coverage)
     runs-on: ubuntu-latest
+    needs: check-node
+    if: needs.check-node.outputs.has_node == 'true'
 
     steps:
       - name: Checkout source
