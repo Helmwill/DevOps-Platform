@@ -1,5 +1,9 @@
 # VPS Self-Hosted DevOps Platform
 
+[![PR Gate](https://github.com/Helmwill/DevOps-Platform/actions/workflows/pr-gate.yml/badge.svg?branch=main)](https://github.com/Helmwill/DevOps-Platform/actions/workflows/pr-gate.yml)
+[![Deploy Dev](https://github.com/Helmwill/DevOps-Platform/actions/workflows/deploy-dev.yml/badge.svg)](https://github.com/Helmwill/DevOps-Platform/actions/workflows/deploy-dev.yml)
+[![Deploy Prod](https://github.com/Helmwill/DevOps-Platform/actions/workflows/deploy-prod.yml/badge.svg)](https://github.com/Helmwill/DevOps-Platform/actions/workflows/deploy-prod.yml)
+
 A fully self-hosted DevOps platform running on a single VPS (or small cluster of VMs).
 It combines a Traefik reverse proxy, GitHub Actions CI/CD, and a custom web dashboard —
 all wired together over a shared Docker network with automatic TLS via Let's Encrypt.

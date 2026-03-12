@@ -126,8 +126,39 @@
       "detail": "Story 6.1 complete — HEALTHCHECK added to backend Dockerfile (wget /health, 30s/5s/10s/3) and frontend Dockerfile (wget /, same params); Compose healthcheck blocks added to all six services across dev/qa/prod; Traefik healthcheck added to infra compose; containerService.resolveStatus updated to return errored for running containers with (unhealthy) in Status string; test added for unhealthy container scenario"
     }
   ],
+    {
+      "timestamp": "2026-03-12",
+      "event": "STORY_COMPLETE",
+      "actor": "orchestrator",
+      "detail": "Story 5.2 complete — Semgrep T2 SAST job already present in pr-gate.yml from Story 5.1; scans with --config=auto --error; CRITICAL/HIGH findings hard block; SARIF artifact uploaded"
+    },
+    {
+      "timestamp": "2026-03-12",
+      "event": "STORY_COMPLETE",
+      "actor": "orchestrator",
+      "detail": "Story 5.3 complete — Trivy T3 IaC scan job already present in pr-gate.yml from Story 5.1; trivy config . on all Compose files and Dockerfiles; HIGH/CRITICAL exit-code 1 hard block; artifact uploaded"
+    },
+    {
+      "timestamp": "2026-03-12",
+      "event": "STORY_COMPLETE",
+      "actor": "orchestrator",
+      "detail": "Story 5.4 complete — tests/performance/load-test.js created (20 VUs, 30s, p99<500ms threshold); deploy-qa.yml performance-test job references it via K6_TARGET_URL; integration-test job fixed to use dashboard/backend working-directory with DASHBOARD_CREDENTIALS env var; live-api.test.ts integration test created (skipped locally, runs against QA URL)"
+    },
+    {
+      "timestamp": "2026-03-12",
+      "event": "STORY_COMPLETE",
+      "actor": "orchestrator",
+      "detail": "Story 5.5 complete — Gitleaks + Trivy CVE scan already in deploy-qa.yml security-gate job; image tagged with commit SHA in deploy-dev.yml build job; prod_deployment_approval gate present as approval-gate job targeting production environment; workflow status badges added to README"
+    },
+    {
+      "timestamp": "2026-03-12",
+      "event": "STORY_COMPLETE",
+      "actor": "orchestrator",
+      "detail": "Story 6.2 complete — scripts/smoke.sh created (tests /health, /api/containers, /api/stats, /); smoke-test-prod in deploy-prod.yml now uses smoke.sh with DASHBOARD_CREDENTIALS; rollback-prod job added (runs on smoke failure, restores prev_image_tag captured before deploy); teardown-qa writes rich deployment summary to GITHUB_STEP_SUMMARY; README badges added for PR Gate, Deploy Dev, Deploy Prod workflows"
+    }
+  ],
   "next_gate": "STORY_PR_MERGE",
-  "next_gate_action": "Review and merge PRs for Story 3.4 (Traefik routing) and Story 6.1 (Health checks)",
+  "next_gate_action": "Review and merge open PRs: #13 (Story 3.4), #14 (Story 6.1), and new PR for Stories 5.4/5.5/6.2 pipeline final",
   "amendments": [
     {
       "timestamp": "2026-03-12",

@@ -75,17 +75,39 @@ jobs:
   # DEPLOY PROD — Pull exact image digest to VPS production slot
   # Uses the same commit SHA that was verified through the entire QA pipeline.
   # The production docker-compose project is kept strictly separate from dev/QA.
+  #
+  # Also captures the PREVIOUS running image tag so rollback-prod can use it
+  # if the smoke test fails after this deployment.
   # ---------------------------------------------------------------------------
   deploy-prod:
     name: Deploy to Production
     runs-on: ubuntu-latest
     needs: approval-gate
 
+    outputs:
+      # Previous image tag captured before this deployment — used by rollback-prod
+      prev_image_tag: ${{ steps.prev-tag.outputs.prev_image_tag }}
+
     steps:
       - name: Write SSH deploy key
         run: |
           install -m 600 /dev/null /tmp/deploy_key
           echo "${{ secrets.VPS_SSH_KEY }}" > /tmp/deploy_key
+
+      - name: Capture previous image tag for rollback
+        id: prev-tag
+        # Inspect the currently running backend container to get its image tag.
+        # Falls back to the current SHA (no-op rollback) if no container is running.
+        run: |
+          PREV=$(ssh -i /tmp/deploy_key \
+                     -o StrictHostKeyChecking=no \
+                     -o BatchMode=yes \
+                     "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+                   "docker inspect dashboard-backend-prod \
+                      --format '{{.Config.Image}}' 2>/dev/null \
+                      | cut -d: -f2 || echo '${{ github.event.workflow_run.head_sha }}'")
+          echo "prev_image_tag=${PREV}" >> "$GITHUB_OUTPUT"
+          echo "Previous image tag: $PREV"
 
       - name: Deploy to VPS production slot via SSH
         # Pulls the EXACT same image digest that passed all QA gates.
@@ -130,9 +152,9 @@ jobs:
         run: rm -f /tmp/deploy_key
 
   # ---------------------------------------------------------------------------
-  # SMOKE TEST PROD — Health-check against the production subdomain
-  # Validates that the newly deployed production containers are responding.
-  # Retries for up to 90 seconds to allow for rolling restarts.
+  # SMOKE TEST PROD — Full smoke test suite via scripts/smoke.sh
+  # Validates that all key API endpoints are healthy after deployment.
+  # Failure triggers automatic rollback via rollback-prod.
   # ---------------------------------------------------------------------------
   smoke-test-prod:
     name: Smoke Test (Production)
@@ -140,39 +162,88 @@ jobs:
     needs: deploy-prod
 
     steps:
-      - name: Wait for production service to become healthy
-        # Poll the health endpoint with a 90-second timeout.
-        # Production gets a slightly longer window than dev/QA to account for
-        # any warm-up time under live traffic.
+      - name: Checkout source (for smoke.sh)
+        uses: actions/checkout@v4
+
+      - name: Wait for production service to come up
+        # Give the containers time to start before running the full suite
         run: |
-          echo "Checking https://dashboard.${{ secrets.DOMAIN }}/health ..."
+          echo "Waiting for https://dashboard.${{ secrets.DOMAIN }}/health ..."
           for i in $(seq 1 18); do
             STATUS=$(curl --silent --output /dev/null --write-out "%{http_code}" \
                        --max-time 10 \
                        "https://dashboard.${{ secrets.DOMAIN }}/health" || true)
-            if [ "$STATUS" = "200" ]; then
-              echo "Production health check passed (HTTP $STATUS) on attempt $i"
+            if [ "$STATUS" = "200" ] || [ "$STATUS" = "401" ]; then
+              echo "Service is up (HTTP $STATUS) on attempt $i"
               exit 0
             fi
             echo "Attempt $i: got HTTP $STATUS — retrying in 5s..."
             sleep 5
           done
-          echo "SMOKE TEST FAILED: dashboard.${{ secrets.DOMAIN }}/health did not return 200 within 90s"
+          echo "SMOKE TEST FAILED: service did not become reachable within 90s"
           exit 1
 
-      - name: Verify dashboard subdomain is reachable
-        # Additional check on the dashboard subdomain served via Traefik
+      - name: Run full smoke test suite
+        # DASHBOARD_CREDENTIALS secret must be set in the `production` environment
+        # as plain-text user:password (separate from the htpasswd DASHBOARD_AUTH).
+        # If absent, smoke.sh will attempt unauthenticated checks.
         run: |
-          STATUS=$(curl --silent --output /dev/null --write-out "%{http_code}" \
-                     --max-time 10 \
-                     "https://dashboard.${{ secrets.DOMAIN }}/" || true)
-          if [ "$STATUS" = "200" ] || [ "$STATUS" = "401" ]; then
-            # 401 is acceptable — it means the dashboard is up but requires auth
-            echo "Dashboard subdomain reachable (HTTP $STATUS)"
-          else
-            echo "SMOKE TEST FAILED: dashboard.${{ secrets.DOMAIN }} returned HTTP $STATUS"
-            exit 1
-          fi
+          bash scripts/smoke.sh \
+            "https://dashboard.${{ secrets.DOMAIN }}" \
+            "${{ secrets.DASHBOARD_CREDENTIALS }}"
+
+  # ---------------------------------------------------------------------------
+  # ROLLBACK PROD — Automatically restore the previous image on smoke failure
+  # Only runs if smoke-test-prod fails.  Uses the prev_image_tag captured
+  # before the deployment so the exact previous state is restored.
+  # ---------------------------------------------------------------------------
+  rollback-prod:
+    name: Rollback Production (auto)
+    runs-on: ubuntu-latest
+    needs: [deploy-prod, smoke-test-prod]
+    if: needs.smoke-test-prod.result == 'failure'
+
+    steps:
+      - name: Write SSH deploy key
+        run: |
+          install -m 600 /dev/null /tmp/deploy_key
+          echo "${{ secrets.VPS_SSH_KEY }}" > /tmp/deploy_key
+
+      - name: Rollback to previous image
+        run: |
+          PREV_TAG="${{ needs.deploy-prod.outputs.prev_image_tag }}"
+          echo "Rolling back to image tag: $PREV_TAG"
+
+          ssh -i /tmp/deploy_key \
+              -o StrictHostKeyChecking=no \
+              -o BatchMode=yes \
+              "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            "
+              set -euo pipefail
+
+              cd ~/devops-platform/prod
+
+              export IMAGE_TAG='$PREV_TAG'
+              export REGISTRY_URL='${{ secrets.REGISTRY_URL }}'
+              export DOMAIN='${{ secrets.DOMAIN }}'
+              export DASHBOARD_AUTH='${{ secrets.DASHBOARD_AUTH }}'
+
+              # Re-deploy using the previous image — already present on the host
+              docker compose up -d --pull never --remove-orphans
+
+              echo 'Rollback complete — running image: $PREV_TAG'
+            "
+
+      - name: Remove SSH key from runner
+        if: always()
+        run: rm -f /tmp/deploy_key
+
+      - name: Annotate rollback in workflow summary
+        run: |
+          echo "## :warning: Production Rollback Triggered" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Smoke tests failed after deploying \`${{ github.event.workflow_run.head_sha }}\`." >> "$GITHUB_STEP_SUMMARY"
+          echo "Rolled back to previous image tag: \`${{ needs.deploy-prod.outputs.prev_image_tag }}\`." >> "$GITHUB_STEP_SUMMARY"
 
   # ---------------------------------------------------------------------------
   # TEARDOWN QA — Shut down the QA slot after successful prod deployment
@@ -214,13 +285,32 @@ jobs:
         if: always()
         run: rm -f /tmp/deploy_key
 
-      - name: Deployment summary
+      - name: Write deployment summary
         run: |
+          DEPLOYED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          SHA="${{ github.event.workflow_run.head_sha }}"
+
+          # Print to log
           echo "=============================================="
           echo "Production deployment complete."
-          echo "Commit SHA : ${{ github.event.workflow_run.head_sha }}"
-          echo "Backend    : ${{ secrets.REGISTRY_URL }}/dashboard-backend:${{ github.event.workflow_run.head_sha }}"
-          echo "Frontend   : ${{ secrets.REGISTRY_URL }}/dashboard-frontend:${{ github.event.workflow_run.head_sha }}"
+          echo "Deployed at: $DEPLOYED_AT"
+          echo "Commit SHA : $SHA"
+          echo "Backend    : ${{ secrets.REGISTRY_URL }}/dashboard-backend:$SHA"
+          echo "Frontend   : ${{ secrets.REGISTRY_URL }}/dashboard-frontend:$SHA"
           echo "Live URL   : https://dashboard.${{ secrets.DOMAIN }}"
           echo "QA slot    : torn down"
+          echo "Smoke tests: PASSED"
           echo "=============================================="
+
+          # Write rich summary to GitHub Actions job summary panel
+          {
+            echo "## Production Deployment Complete"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Deployed at | \`$DEPLOYED_AT\` |"
+            echo "| Commit SHA | \`$SHA\` |"
+            echo "| Live URL | https://dashboard.${{ secrets.DOMAIN }} |"
+            echo "| Smoke tests | PASSED |"
+            echo "| QA slot | torn down |"
+          } >> "$GITHUB_STEP_SUMMARY"

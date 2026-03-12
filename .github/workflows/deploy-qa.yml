@@ -184,16 +184,19 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
+          cache-dependency-path: dashboard/backend/package-lock.json
 
       - name: Install dependencies
+        working-directory: dashboard/backend
         run: npm ci
 
-      - name: Run integration tests
-        # TEST_BASE_URL points the test suite at the live QA environment.
-        # Integration tests must exit non-zero on failure.
+      - name: Run integration tests against live QA
+        # TEST_BASE_URL  — points at the live QA slot
+        # DASHBOARD_CREDENTIALS — optional plain-text user:password for basic auth
+        working-directory: dashboard/backend
         env:
           TEST_BASE_URL: "https://qa.${{ secrets.DOMAIN }}"
-          DASHBOARD_AUTH: ${{ secrets.DASHBOARD_AUTH }}
+          DASHBOARD_CREDENTIALS: ${{ secrets.DASHBOARD_CREDENTIALS }}
         run: npx jest --ci --testPathPattern=integration --forceExit
 
       - name: Upload integration test results
@@ -201,7 +204,7 @@ jobs:
         if: always()
         with:
           name: integration-test-results
-          path: test-results/
+          path: dashboard/backend/test-results/
           retention-days: 14
 
   # ---------------------------------------------------------------------------
