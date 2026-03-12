@@ -24,7 +24,13 @@ services:
     restart: "no"
     security_opt:
       - no-new-privileges:true
+    # Harden container filesystem — read-only root FS, /tmp as tmpfs
+    # See docs/adr/006-docker-socket-hardening.md for rationale
+    read_only: true
+    tmpfs:
+      - /tmp
     volumes:
+      # Docker socket mounted read-only — dashboard only reads container state
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       NODE_ENV: test
