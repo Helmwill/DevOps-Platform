@@ -16,7 +16,7 @@ name: Deploy Dev
 on:
   push:
     branches:
-      - develop
+      - dev
 
 # Only one deploy-dev run at a time — cancel older runs if a new push arrives
 concurrency:

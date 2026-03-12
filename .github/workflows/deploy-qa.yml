@@ -22,7 +22,7 @@ on:
     types:
       - completed
     branches:
-      - develop
+      - dev
 
 # Only one QA pipeline at a time
 concurrency:

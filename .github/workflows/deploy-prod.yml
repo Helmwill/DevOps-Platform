@@ -23,7 +23,7 @@ on:
     types:
       - completed
     branches:
-      - develop
+      - dev
 
 # Serialise production deployments — never run two at once
 concurrency:

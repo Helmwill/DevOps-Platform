@@ -69,7 +69,7 @@
       "timestamp": "2026-03-12",
       "event": "STORY_IN_PROGRESS",
       "actor": "orchestrator",
-      "detail": "Story 1.3 in progress — GitHub Actions configuration: fixing develop→dev branch name in deploy workflows; human gate for Environments and Secrets"
+      "detail": "Story 1.3 in progress — GitHub Actions configuration: fixed develop→dev branch name in deploy-dev/qa/prod workflows; human gate pending for GitHub Environments and Secrets"
     }
   ],
   "next_gate": "AWAITING_HUMAN_SECRET",
