@@ -1,0 +1,53 @@
+---
+# Production slot — persistent, requires manual approval gate before first deploy
+#
+# Traefik route : https://dashboard.${DOMAIN}
+# Lifecycle     : persistent — only updated after Helmwill approves in GitHub Actions
+# Auth          : basic-auth via DASHBOARD_AUTH secret (htpasswd string)
+#
+# Environment variables injected by deploy-prod.yml workflow:
+#   IMAGE_TAG       — full commit SHA promoted from QA (no rebuild)
+#   REGISTRY_URL    — container registry hostname
+#   DOMAIN          — base domain (e.g. example.com)
+#   DASHBOARD_AUTH  — htpasswd string for basic-auth
+
+networks:
+  traefik-public:
+    external: true
+
+services:
+
+  dashboard-prod:
+    image: ${REGISTRY_URL}/dashboard:${IMAGE_TAG:-latest}
+    container_name: dashboard-prod
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      NODE_ENV: production
+      DOMAIN: ${DOMAIN}
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+
+      # ---- HTTP → HTTPS redirect ----
+      - "traefik.http.routers.dashboard-prod-http.rule=Host(`dashboard.${DOMAIN}`)"
+      - "traefik.http.routers.dashboard-prod-http.entrypoints=web"
+      - "traefik.http.routers.dashboard-prod-http.middlewares=redirect-to-https"
+
+      # ---- HTTPS router ----
+      - "traefik.http.routers.dashboard-prod.rule=Host(`dashboard.${DOMAIN}`)"
+      - "traefik.http.routers.dashboard-prod.entrypoints=websecure"
+      - "traefik.http.routers.dashboard-prod.tls=true"
+      - "traefik.http.routers.dashboard-prod.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.dashboard-prod.middlewares=dashboard-prod-auth"
+
+      # ---- Service port ----
+      - "traefik.http.services.dashboard-prod.loadbalancer.server.port=${DASHBOARD_PORT:-3000}"
+
+      # ---- Basic-auth middleware ----
+      - "traefik.http.middlewares.dashboard-prod-auth.basicauth.users=${DASHBOARD_AUTH}"

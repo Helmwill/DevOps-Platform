@@ -1,0 +1,54 @@
+---
+# QA slot — ephemeral, spun up after dev deploy, torn down after prod deploy
+#
+# Traefik route : https://qa.${DOMAIN}
+# Lifecycle     : ephemeral — `docker compose up -d` / `docker compose down`
+# Auth          : basic-auth via DASHBOARD_AUTH secret (htpasswd string)
+#
+# Environment variables injected by deploy-qa.yml workflow:
+#   IMAGE_TAG       — full commit SHA promoted from dev (no rebuild)
+#   REGISTRY_URL    — container registry hostname
+#   DOMAIN          — base domain (e.g. example.com)
+#   DASHBOARD_AUTH  — htpasswd string for basic-auth
+
+networks:
+  traefik-public:
+    external: true
+
+services:
+
+  dashboard-qa:
+    image: ${REGISTRY_URL}/dashboard:${IMAGE_TAG:-latest}
+    container_name: dashboard-qa
+    # no restart policy — QA slot is ephemeral and torn down after prod deploy
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      NODE_ENV: test
+      DOMAIN: ${DOMAIN}
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+
+      # ---- HTTP → HTTPS redirect ----
+      - "traefik.http.routers.dashboard-qa-http.rule=Host(`qa.${DOMAIN}`)"
+      - "traefik.http.routers.dashboard-qa-http.entrypoints=web"
+      - "traefik.http.routers.dashboard-qa-http.middlewares=redirect-to-https"
+
+      # ---- HTTPS router ----
+      - "traefik.http.routers.dashboard-qa.rule=Host(`qa.${DOMAIN}`)"
+      - "traefik.http.routers.dashboard-qa.entrypoints=websecure"
+      - "traefik.http.routers.dashboard-qa.tls=true"
+      - "traefik.http.routers.dashboard-qa.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.dashboard-qa.middlewares=dashboard-qa-auth"
+
+      # ---- Service port ----
+      - "traefik.http.services.dashboard-qa.loadbalancer.server.port=${DASHBOARD_PORT:-3000}"
+
+      # ---- Basic-auth middleware ----
+      - "traefik.http.middlewares.dashboard-qa-auth.basicauth.users=${DASHBOARD_AUTH}"
