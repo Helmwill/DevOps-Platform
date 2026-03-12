@@ -24,36 +24,13 @@ concurrency:
 jobs:
 
   # ---------------------------------------------------------------------------
-  # CHECK — Detect whether Node.js code exists yet
-  # lint and unit-test are skipped until package.json is present (pre-Epic 2).
+  # LINT — ESLint for backend and frontend
+  # Skipped when service directories don't exist yet (infra-only PRs).
   # ---------------------------------------------------------------------------
-  check-node:
-    name: Check for Node.js project
+  lint-backend:
+    name: Lint Backend (ESLint)
     runs-on: ubuntu-latest
-    outputs:
-      has_node: ${{ steps.detect.outputs.has_node }}
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-      - name: Detect package.json
-        id: detect
-        run: |
-          if [ -f package.json ]; then
-            echo "has_node=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_node=false" >> "$GITHUB_OUTPUT"
-          fi
-
-  # ---------------------------------------------------------------------------
-  # LINT — ESLint
-  # Catches code-style violations and basic logic errors before any tests run.
-  # Skipped when no package.json exists (infra-only PRs before Epic 2).
-  # ---------------------------------------------------------------------------
-  lint:
-    name: Lint (ESLint)
-    runs-on: ubuntu-latest
-    needs: check-node
-    if: needs.check-node.outputs.has_node == 'true'
+    if: ${{ hashFiles('dashboard/backend/package.json') != '' }}
 
     steps:
       - name: Checkout source
@@ -64,25 +41,20 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
+          cache-dependency-path: dashboard/backend/package-lock.json
 
       - name: Install dependencies
+        working-directory: dashboard/backend
         run: npm ci
 
       - name: Run ESLint
-        # --max-warnings 0 means any warning is treated as an error
-        run: npx eslint . --ext .js,.jsx,.ts,.tsx --max-warnings 0
+        working-directory: dashboard/backend
+        run: npx eslint src --ext .ts --max-warnings 0
 
-  # ---------------------------------------------------------------------------
-  # UNIT TEST — Jest with coverage gate
-  # T1: Unit tests must pass AND coverage must be >=80% on all metrics.
-  # Hard block: job fails (non-zero exit) if coverage threshold is not met.
-  # Skipped when no package.json exists (infra-only PRs before Epic 2).
-  # ---------------------------------------------------------------------------
-  unit-test:
-    name: Unit Tests (Jest ≥80% coverage)
+  lint-frontend:
+    name: Lint Frontend (ESLint)
     runs-on: ubuntu-latest
-    needs: check-node
-    if: needs.check-node.outputs.has_node == 'true'
+    if: ${{ hashFiles('dashboard/frontend/package.json') != '' }}
 
     steps:
       - name: Checkout source
@@ -93,25 +65,83 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
+          cache-dependency-path: dashboard/frontend/package-lock.json
 
       - name: Install dependencies
+        working-directory: dashboard/frontend
+        run: npm ci
+
+      - name: Run ESLint
+        working-directory: dashboard/frontend
+        run: npx eslint src --ext .ts,.tsx --max-warnings 0
+
+  # ---------------------------------------------------------------------------
+  # UNIT TEST — T1: backend (Jest) and frontend (Vitest) with >=80% coverage
+  # Hard block: job fails if coverage threshold is not met.
+  # Skipped when service directories don't exist yet.
+  # ---------------------------------------------------------------------------
+  unit-test-backend:
+    name: Unit Tests Backend (Jest ≥80% coverage)
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('dashboard/backend/package.json') != '' }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20 (LTS)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: dashboard/backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: dashboard/backend
         run: npm ci
 
       - name: Run Jest with coverage
-        # --coverage enforces the thresholds defined in jest.config
-        # --ci disables interactive mode and treats snapshot mismatches as failures
-        # Coverage thresholds (branches/functions/lines/statements >=80%) must be
-        # set in jest.config.js/ts under coverageThreshold — Jest exits non-zero
-        # if any threshold is breached, which fails this job.
+        working-directory: dashboard/backend
         run: npx jest --ci --coverage --coverageReporters=text --coverageReporters=lcov
 
-      - name: Upload coverage report
-        # Preserve the coverage artefact for review in the PR
+      - name: Upload backend coverage report
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: coverage-report
-          path: coverage/
+          name: backend-coverage-report
+          path: dashboard/backend/coverage/
+          retention-days: 14
+
+  unit-test-frontend:
+    name: Unit Tests Frontend (Vitest ≥80% coverage)
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('dashboard/frontend/package.json') != '' }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20 (LTS)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: dashboard/frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: dashboard/frontend
+        run: npm ci
+
+      - name: Run Vitest with coverage
+        working-directory: dashboard/frontend
+        run: npm run test:coverage
+
+      - name: Upload frontend coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-coverage-report
+          path: dashboard/frontend/coverage/
           retention-days: 14
 
   # ---------------------------------------------------------------------------
