@@ -73,13 +73,43 @@
     },
     {
       "timestamp": "2026-03-12",
-      "event": "STORY_IN_PROGRESS",
+      "event": "STORY_COMPLETE",
       "actor": "orchestrator",
-      "detail": "Story 1.4 in progress — Environment routing: dev/, qa/, prod/ compose files with Traefik subdomain rules (dev.DOMAIN, qa.DOMAIN, dashboard.DOMAIN)"
+      "detail": "Story 1.4 complete — dev/, qa/, prod/ compose files with Traefik subdomain routing merged"
+    },
+    {
+      "timestamp": "2026-03-12",
+      "event": "STORY_COMPLETE",
+      "actor": "orchestrator",
+      "detail": "Story 2.1 complete — Node.js/TypeScript backend scaffold with Express, dockerode client, GET /health, Jest 100% coverage"
+    },
+    {
+      "timestamp": "2026-03-12",
+      "event": "STORY_COMPLETE",
+      "actor": "orchestrator",
+      "detail": "Story 3.1 complete — Vite + React + TypeScript frontend scaffold with Nginx, Vitest, non-root Dockerfile"
+    },
+    {
+      "timestamp": "2026-03-12",
+      "event": "STORY_COMPLETE",
+      "actor": "orchestrator",
+      "detail": "Story 2.2 complete — GET /api/containers endpoint with running/stopped/errored status mapping, 503 on daemon unavailability"
+    },
+    {
+      "timestamp": "2026-03-12",
+      "event": "STORY_COMPLETE",
+      "actor": "orchestrator",
+      "detail": "Story 4.2 complete — Docker socket hardening: read_only, tmpfs /tmp, no-new-privileges, non-root user, ADR-006"
+    },
+    {
+      "timestamp": "2026-03-12",
+      "event": "HUMAN_GATE_CLEARED",
+      "actor": "human",
+      "detail": "GitHub Environments (dev, qa, production) created and all 8 secrets configured"
     }
   ],
   "next_gate": "STORY_PR_MERGE",
-  "next_gate_action": "Review and merge PR for Story 1.4 (feature/story-1.4-environment-routing → main). Then ensure repo is cloned to ~/devops-platform on VPS so deploy workflows find the correct compose files.",
+  "next_gate_action": "Review and merge PRs for Sprint 5 stories 2.3 and 2.4",
   "amendments": [
     {
       "timestamp": "2026-03-12",
