@@ -17,8 +17,13 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    # Harden container filesystem — read-only root FS, /tmp as tmpfs
+    # See docs/adr/006-docker-socket-hardening.md for rationale
+    read_only: true
+    tmpfs:
+      - /tmp
     volumes:
-      # Read-only Docker socket — lets the dashboard query running containers
+      # Docker socket mounted read-only — dashboard only reads container state
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       # Pass through any runtime config the dashboard app needs
