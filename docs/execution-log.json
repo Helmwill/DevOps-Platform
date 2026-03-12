@@ -1,7 +1,7 @@
 {
   "project_id": "proj_vps_devops_platform",
   "project_name": "VPS Self-Hosted DevOps Platform",
-  "state": "PLANNING_PR_OPEN",
+  "state": "EXECUTION_IN_PROGRESS",
   "events": [
     {
       "timestamp": "2026-03-12",
@@ -40,10 +40,34 @@
       "detail": "Branch plan/proj_vps_devops_platform ready for review by Helmwill",
       "required_approver": "Helmwill",
       "gate": "PLANNING_PR_APPROVAL — all items must be approved before execution unlocks"
+    },
+    {
+      "timestamp": "2026-03-12",
+      "event": "PLANNING_PR_APPROVED",
+      "actor": "human",
+      "detail": "Planning PR reviewed and approved by Helmwill; execution unlocked"
+    },
+    {
+      "timestamp": "2026-03-12",
+      "event": "EXECUTION_UNLOCKED",
+      "actor": "orchestrator",
+      "detail": "Human issued execute command; beginning Sprint 1 story execution"
+    },
+    {
+      "timestamp": "2026-03-12",
+      "event": "STORY_COMPLETE",
+      "actor": "orchestrator",
+      "detail": "Story 1.1 complete — Docker network scaffold and README merged to dev"
+    },
+    {
+      "timestamp": "2026-03-12",
+      "event": "STORY_IN_PROGRESS",
+      "actor": "orchestrator",
+      "detail": "Story 1.2 in progress — GitHub Actions CI/CD scaffold (pr-gate, deploy-dev, deploy-qa, deploy-prod)"
     }
   ],
-  "next_gate": "PLANNING_PR_APPROVAL",
-  "next_gate_action": "Review and approve the Planning PR. Reply 'execute' to unlock Story execution.",
+  "next_gate": "STORY_PR_MERGE",
+  "next_gate_action": "Review Story 1.2 PR when opened; merge to dev to continue execution.",
   "amendments": [
     {
       "timestamp": "2026-03-12",
