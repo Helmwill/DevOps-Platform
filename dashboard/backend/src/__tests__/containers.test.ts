@@ -55,6 +55,15 @@ describe('GET /api/containers', () => {
     expect(res.body[0].status).toBe('stopped');
   });
 
+  it('returns running but unhealthy container with status "errored"', async () => {
+    setDockerClient(
+      mockDocker([makeContainer({ State: 'running', Status: 'Up 2 hours (unhealthy)' })]),
+    );
+    const res = await request(app).get('/api/containers');
+    expect(res.status).toBe(200);
+    expect(res.body[0].status).toBe('errored');
+  });
+
   it('returns errored container (non-zero exit) with status "errored"', async () => {
     setDockerClient(
       mockDocker([makeContainer({ State: 'exited', Status: 'Exited (1) 1 hour ago' })]),

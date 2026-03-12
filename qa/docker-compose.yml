@@ -38,6 +38,12 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       NODE_ENV: test
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
     networks:
       - traefik-public
     labels:
@@ -67,6 +73,12 @@ services:
       - /var/cache/nginx
       - /var/run
       - /tmp
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
     networks:
       - traefik-public
     labels:

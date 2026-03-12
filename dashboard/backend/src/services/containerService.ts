@@ -2,6 +2,10 @@ import Dockerode from 'dockerode';
 import { ContainerInfo, ContainerStatus } from '../types/container';
 
 function resolveStatus(container: Dockerode.ContainerInfo): ContainerStatus {
+  // Unhealthy running containers surface as errored (Docker HEALTHCHECK integration)
+  if (container.State === 'running' && container.Status.includes('(unhealthy)')) {
+    return 'errored';
+  }
   if (container.State === 'running') return 'running';
   // Exited with non-zero exit code = errored
   if (container.State === 'exited' && container.Status.includes('Exited (0)') === false) {

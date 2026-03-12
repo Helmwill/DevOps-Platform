@@ -112,10 +112,22 @@
       "event": "STORY_COMPLETE",
       "actor": "orchestrator",
       "detail": "Story 3.4 complete — dev/qa/prod compose files updated to two-service split (dashboard-backend + dashboard-frontend); Traefik path routing: /api/* and /health → backend (port 3000, priority 10), / → frontend nginx (port 8080, priority 1); deploy-qa and deploy-prod workflows updated to pull both images; prod smoke test URL corrected to dashboard.${DOMAIN}"
+    },
+    {
+      "timestamp": "2026-03-12",
+      "event": "STORY_COMPLETE",
+      "actor": "orchestrator",
+      "detail": "Story 4.1 complete — basicauth middleware already wired in Story 3.4 compose files via DASHBOARD_AUTH env var (htpasswd string); all three environments (dev/qa/prod) protected; Traefik returns 401 + WWW-Authenticate for unauthenticated requests"
+    },
+    {
+      "timestamp": "2026-03-12",
+      "event": "STORY_COMPLETE",
+      "actor": "orchestrator",
+      "detail": "Story 6.1 complete — HEALTHCHECK added to backend Dockerfile (wget /health, 30s/5s/10s/3) and frontend Dockerfile (wget /, same params); Compose healthcheck blocks added to all six services across dev/qa/prod; Traefik healthcheck added to infra compose; containerService.resolveStatus updated to return errored for running containers with (unhealthy) in Status string; test added for unhealthy container scenario"
     }
   ],
   "next_gate": "STORY_PR_MERGE",
-  "next_gate_action": "Review and merge PR for Story 3.4 (Traefik routing)",
+  "next_gate_action": "Review and merge PRs for Story 3.4 (Traefik routing) and Story 6.1 (Health checks)",
   "amendments": [
     {
       "timestamp": "2026-03-12",
