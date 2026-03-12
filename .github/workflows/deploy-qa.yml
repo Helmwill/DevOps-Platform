@@ -79,8 +79,9 @@ jobs:
                   --username '${{ secrets.REGISTRY_USER }}' \
                   --password-stdin
 
-              # Pull the exact image — same digest as dev, no rebuild
-              docker pull '${{ secrets.REGISTRY_URL }}/dashboard:'"$SHA"'
+              # Pull the exact images — same digests as dev, no rebuild
+              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-backend:'"$SHA"'
+              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-frontend:'"$SHA"'
 
               # Navigate to the QA compose project directory
               cd ~/devops-platform/qa
@@ -276,8 +277,8 @@ jobs:
               --username "${{ secrets.REGISTRY_USER }}" \
               --password-stdin
 
-      - name: Trivy CVE scan on container image
-        # Scans the exact image digest built in the dev pipeline.
+      - name: Trivy CVE scan on container images
+        # Scans the exact image digests built in the dev pipeline.
         # --exit-code 1 fails the job on HIGH/CRITICAL CVEs (hard block).
         # --ignore-unfixed excludes CVEs with no available fix (reduces noise).
         run: |
@@ -286,9 +287,17 @@ jobs:
             --exit-code 1 \
             --ignore-unfixed \
             --format table \
-            --output trivy-image-results.txt \
-            "${{ secrets.REGISTRY_URL }}/dashboard:${{ github.event.workflow_run.head_sha }}" \
-            || (echo "SECURITY GATE HARD BLOCK: Trivy found HIGH/CRITICAL CVEs — see trivy-image-results.txt" && exit 1)
+            --output trivy-backend-results.txt \
+            "${{ secrets.REGISTRY_URL }}/dashboard-backend:${{ github.event.workflow_run.head_sha }}" \
+            || (echo "SECURITY GATE HARD BLOCK: Trivy found HIGH/CRITICAL CVEs in backend — see trivy-backend-results.txt" && exit 1)
+          trivy image \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            --ignore-unfixed \
+            --format table \
+            --output trivy-frontend-results.txt \
+            "${{ secrets.REGISTRY_URL }}/dashboard-frontend:${{ github.event.workflow_run.head_sha }}" \
+            || (echo "SECURITY GATE HARD BLOCK: Trivy found HIGH/CRITICAL CVEs in frontend — see trivy-frontend-results.txt" && exit 1)
 
       - name: Install Gitleaks
         # Install the latest stable Gitleaks release
@@ -315,6 +324,7 @@ jobs:
         with:
           name: security-gate-results
           path: |
-            trivy-image-results.txt
+            trivy-backend-results.txt
+            trivy-frontend-results.txt
             gitleaks-results.json
           retention-days: 14

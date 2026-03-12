@@ -1,14 +1,14 @@
 # =============================================================================
-# DEPLOY DEV — Build once, push to registry, deploy to dev slot
-# Trigger: push to the `develop` branch
+# DEPLOY DEV — Build both images, push to registry, deploy to dev slot
+# Trigger: push to the `dev` branch
 #
 # Jobs:
-#   build            — Docker build tagged with commit SHA, push to registry
-#   deploy-dev       — SSH to VPS, pull image, docker compose up -d in dev slot
+#   build            — Build dashboard-backend and dashboard-frontend images
+#   deploy-dev       — SSH to VPS, pull both images, docker compose up -d
 #   smoke-test-dev   — HTTP health-check against the dev subdomain
 #
-# The image tag = github.sha (full commit SHA) for complete traceability.
-# This is the ONLY place the image is built; QA and prod promote this digest.
+# Image tags = github.sha for complete traceability.
+# These are the ONLY builds; QA and prod promote the same digests.
 # =============================================================================
 
 name: Deploy Dev
@@ -18,7 +18,6 @@ on:
     branches:
       - dev
 
-# Only one deploy-dev run at a time — cancel older runs if a new push arrives
 concurrency:
   group: deploy-dev
   cancel-in-progress: true
@@ -26,55 +25,60 @@ concurrency:
 jobs:
 
   # ---------------------------------------------------------------------------
-  # BUILD — Docker build and push to container registry
-  # Tags image with the full commit SHA for full traceability.
-  # The image digest produced here is the single artefact promoted to QA/prod.
+  # BUILD — Build and push backend + frontend Docker images
   # ---------------------------------------------------------------------------
   build:
-    name: Build & Push Docker Image
+    name: Build & Push Docker Images
     runs-on: ubuntu-latest
 
     outputs:
-      # Export the full image reference (registry/image:sha) for downstream jobs
-      image_ref: ${{ steps.set-image-ref.outputs.image_ref }}
+      backend_image_ref: ${{ steps.set-refs.outputs.backend_image_ref }}
+      frontend_image_ref: ${{ steps.set-refs.outputs.frontend_image_ref }}
 
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
 
       - name: Log in to container registry
-        # Use docker login against the project-configured registry.
-        # Credentials are stored exclusively in GitHub Actions secrets.
         run: |
           echo "${{ secrets.REGISTRY_PASSWORD }}" | \
             docker login "${{ secrets.REGISTRY_URL }}" \
               --username "${{ secrets.REGISTRY_USER }}" \
               --password-stdin
 
-      - name: Build Docker image
-        # Tag with full commit SHA so every image is uniquely traceable to its commit.
-        # The image name follows the convention: registry/project/dashboard:<sha>
+      - name: Build backend image
         run: |
           docker build \
-            --tag "${{ secrets.REGISTRY_URL }}/dashboard:${{ github.sha }}" \
+            --file dashboard/backend/Dockerfile \
+            --tag "${{ secrets.REGISTRY_URL }}/dashboard-backend:${{ github.sha }}" \
             --label "git.sha=${{ github.sha }}" \
             --label "git.ref=${{ github.ref }}" \
-            .
+            dashboard/backend/
 
-      - name: Push Docker image to registry
+      - name: Build frontend image
         run: |
-          docker push "${{ secrets.REGISTRY_URL }}/dashboard:${{ github.sha }}"
+          docker build \
+            --file dashboard/frontend/Dockerfile \
+            --tag "${{ secrets.REGISTRY_URL }}/dashboard-frontend:${{ github.sha }}" \
+            --label "git.sha=${{ github.sha }}" \
+            --label "git.ref=${{ github.ref }}" \
+            dashboard/frontend/
 
-      - name: Set image reference output
-        id: set-image-ref
+      - name: Push images to registry
         run: |
-          echo "image_ref=${{ secrets.REGISTRY_URL }}/dashboard:${{ github.sha }}" \
+          docker push "${{ secrets.REGISTRY_URL }}/dashboard-backend:${{ github.sha }}"
+          docker push "${{ secrets.REGISTRY_URL }}/dashboard-frontend:${{ github.sha }}"
+
+      - name: Set image reference outputs
+        id: set-refs
+        run: |
+          echo "backend_image_ref=${{ secrets.REGISTRY_URL }}/dashboard-backend:${{ github.sha }}" \
+            >> "$GITHUB_OUTPUT"
+          echo "frontend_image_ref=${{ secrets.REGISTRY_URL }}/dashboard-frontend:${{ github.sha }}" \
             >> "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------------------
-  # DEPLOY DEV — Pull image to VPS dev slot and bring up the stack
-  # Connects to the VPS over SSH using a deploy key stored in secrets.
-  # The dev slot is isolated via Docker Compose project name / directory.
+  # DEPLOY DEV — Pull both images to VPS dev slot and bring up the stack
   # ---------------------------------------------------------------------------
   deploy-dev:
     name: Deploy to Dev Slot
@@ -84,18 +88,11 @@ jobs:
 
     steps:
       - name: Write SSH deploy key
-        # Write the private key to a temp file with strict permissions.
-        # The key is never printed to logs.
         run: |
           install -m 600 /dev/null /tmp/deploy_key
           echo "${{ secrets.VPS_SSH_KEY }}" > /tmp/deploy_key
 
       - name: Deploy to VPS dev slot via SSH
-        # Single SSH session:
-        #   1. Log in to the registry on the VPS
-        #   2. Pull the exact image digest built in the `build` job
-        #   3. Export environment variables consumed by docker-compose.yml
-        #   4. Bring the dev stack up (recreate changed containers only)
         run: |
           ssh -i /tmp/deploy_key \
               -o StrictHostKeyChecking=no \
@@ -104,25 +101,21 @@ jobs:
             "
               set -euo pipefail
 
-              # Authenticate the VPS Docker daemon with the registry
               echo '${{ secrets.REGISTRY_PASSWORD }}' | \
                 docker login '${{ secrets.REGISTRY_URL }}' \
                   --username '${{ secrets.REGISTRY_USER }}' \
                   --password-stdin
 
-              # Pull the exact image produced by the build job
-              docker pull '${{ needs.build.outputs.image_ref }}'
+              docker pull '${{ needs.build.outputs.backend_image_ref }}'
+              docker pull '${{ needs.build.outputs.frontend_image_ref }}'
 
-              # Navigate to the dev compose project directory
               cd ~/devops-platform/dev
 
-              # Inject runtime configuration as environment variables
               export IMAGE_TAG='${{ github.sha }}'
               export REGISTRY_URL='${{ secrets.REGISTRY_URL }}'
               export DOMAIN='${{ secrets.DOMAIN }}'
               export DASHBOARD_AUTH='${{ secrets.DASHBOARD_AUTH }}'
 
-              # Bring up the dev stack (non-destructive — only recreates changed services)
               docker compose up -d --pull never --remove-orphans
             "
 
@@ -131,9 +124,7 @@ jobs:
         run: rm -f /tmp/deploy_key
 
   # ---------------------------------------------------------------------------
-  # SMOKE TEST DEV — HTTP health-check against the dev subdomain
-  # Retries for up to 60 seconds to allow the container to become ready.
-  # Fails the job if the endpoint never returns HTTP 200.
+  # SMOKE TEST DEV
   # ---------------------------------------------------------------------------
   smoke-test-dev:
     name: Smoke Test (Dev)
@@ -142,8 +133,6 @@ jobs:
 
     steps:
       - name: Wait for dev service to become healthy
-        # Poll the health endpoint with a 60-second timeout.
-        # curl --fail exits non-zero on HTTP 4xx/5xx, failing the job.
         run: |
           echo "Checking https://dev.${{ secrets.DOMAIN }}/health ..."
           for i in $(seq 1 12); do

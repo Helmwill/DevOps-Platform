@@ -1,7 +1,11 @@
 ---
-# Production slot — persistent, requires manual approval gate before first deploy
+# Production slot — frontend + backend services, persistent, requires manual approval gate
 #
-# Traefik route : https://dashboard.${DOMAIN}
+# Traefik routing:
+#   https://dashboard.${DOMAIN}/           → dashboard-frontend-prod (nginx, port 8080)
+#   https://dashboard.${DOMAIN}/api/*      → dashboard-backend-prod  (express, port 3000)
+#   https://dashboard.${DOMAIN}/health     → dashboard-backend-prod  (express, port 3000)
+#
 # Lifecycle     : persistent — only updated after Helmwill approves in GitHub Actions
 # Auth          : basic-auth via DASHBOARD_AUTH secret (htpasswd string)
 #
@@ -17,9 +21,9 @@ networks:
 
 services:
 
-  dashboard-prod:
-    image: ${REGISTRY_URL}/dashboard:${IMAGE_TAG:-latest}
-    container_name: dashboard-prod
+  dashboard-backend-prod:
+    image: ${REGISTRY_URL}/dashboard-backend:${IMAGE_TAG:-latest}
+    container_name: dashboard-backend-prod
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -29,11 +33,38 @@ services:
     tmpfs:
       - /tmp
     volumes:
-      # Docker socket mounted read-only — dashboard only reads container state
+      # Docker socket mounted read-only — backend only reads container state
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       NODE_ENV: production
-      DOMAIN: ${DOMAIN}
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+
+      # ---- Backend: /api/* and /health (high priority) ----
+      - "traefik.http.routers.dashboard-prod-api.rule=Host(`dashboard.${DOMAIN}`) && (PathPrefix(`/api`) || Path(`/health`))"
+      - "traefik.http.routers.dashboard-prod-api.entrypoints=websecure"
+      - "traefik.http.routers.dashboard-prod-api.tls=true"
+      - "traefik.http.routers.dashboard-prod-api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.dashboard-prod-api.middlewares=dashboard-prod-auth"
+      - "traefik.http.routers.dashboard-prod-api.priority=10"
+      - "traefik.http.routers.dashboard-prod-api.service=dashboard-backend-prod"
+      - "traefik.http.services.dashboard-backend-prod.loadbalancer.server.port=3000"
+
+  dashboard-frontend-prod:
+    image: ${REGISTRY_URL}/dashboard-frontend:${IMAGE_TAG:-latest}
+    container_name: dashboard-frontend-prod
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    # nginx writes to cache, pid, and tmp at runtime — provide tmpfs for each
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
     networks:
       - traefik-public
     labels:
@@ -45,15 +76,15 @@ services:
       - "traefik.http.routers.dashboard-prod-http.entrypoints=web"
       - "traefik.http.routers.dashboard-prod-http.middlewares=redirect-to-https"
 
-      # ---- HTTPS router ----
+      # ---- HTTPS router → frontend (catch-all, lower priority) ----
       - "traefik.http.routers.dashboard-prod.rule=Host(`dashboard.${DOMAIN}`)"
       - "traefik.http.routers.dashboard-prod.entrypoints=websecure"
       - "traefik.http.routers.dashboard-prod.tls=true"
       - "traefik.http.routers.dashboard-prod.tls.certresolver=letsencrypt"
       - "traefik.http.routers.dashboard-prod.middlewares=dashboard-prod-auth"
+      - "traefik.http.routers.dashboard-prod.priority=1"
+      - "traefik.http.routers.dashboard-prod.service=dashboard-frontend-prod"
+      - "traefik.http.services.dashboard-frontend-prod.loadbalancer.server.port=8080"
 
-      # ---- Service port ----
-      - "traefik.http.services.dashboard-prod.loadbalancer.server.port=${DASHBOARD_PORT:-3000}"
-
-      # ---- Basic-auth middleware ----
+      # ---- Basic-auth middleware (shared by both routers) ----
       - "traefik.http.middlewares.dashboard-prod-auth.basicauth.users=${DASHBOARD_AUTH}"
