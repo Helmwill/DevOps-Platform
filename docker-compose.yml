@@ -1,0 +1,18 @@
+---
+# Root Compose file for the VPS Self-Hosted DevOps Platform.
+#
+# This file declares the shared external Docker network used by all sub-stacks.
+# It contains no services — each sub-stack manages its own services independently.
+#
+# Shared network: traefik-public
+#
+# Sub-stacks:
+#   infra/traefik/    — Traefik v2 reverse proxy with TLS termination
+#   infra/dashboard/  — Custom web dashboard (placeholder image)
+#
+# Before deploying any sub-stack, create the shared network once:
+#   docker network create traefik-public
+
+networks:
+  traefik-public:
+    external: true

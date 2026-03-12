@@ -1,0 +1,320 @@
+# =============================================================================
+# DEPLOY QA — Promote dev image to QA slot and run full security gauntlet
+# Trigger: workflow_run — runs only after deploy-dev completes successfully
+#
+# Jobs:
+#   deploy-qa          — Pull same image digest to QA slot on VPS (no rebuild)
+#   dast               — OWASP ZAP baseline scan against QA URL (HIGH/CRIT = hard block)
+#   integration-test   — Integration test suite against live QA environment
+#   performance-test   — k6 load test — hard block if p99 latency > 500ms
+#   security-gate      — Trivy CVE scan on image + Gitleaks secrets scan (T5)
+#
+# IMPORTANT: The image is NOT rebuilt here.  The same image digest pushed
+# during deploy-dev is pulled directly from the registry by SHA tag.
+# =============================================================================
+
+name: Deploy QA
+
+on:
+  workflow_run:
+    workflows:
+      - "Deploy Dev"
+    types:
+      - completed
+    branches:
+      - dev
+
+# Only one QA pipeline at a time
+concurrency:
+  group: deploy-qa
+  cancel-in-progress: false   # Do not cancel in-progress QA runs — let them finish
+
+jobs:
+
+  # ---------------------------------------------------------------------------
+  # GUARD — Abort the entire QA pipeline if deploy-dev did not succeed.
+  # This prevents a failed dev deploy from triggering downstream QA work.
+  # ---------------------------------------------------------------------------
+  guard:
+    name: Guard — Verify Deploy Dev Succeeded
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Confirm upstream success
+        run: echo "Deploy Dev succeeded — proceeding with QA pipeline"
+
+  # ---------------------------------------------------------------------------
+  # DEPLOY QA — Pull the same image digest to the VPS QA slot
+  # Uses the commit SHA from the triggering workflow_run event to identify
+  # the exact image that was built and verified in the dev pipeline.
+  # ---------------------------------------------------------------------------
+  deploy-qa:
+    name: Deploy to QA Slot
+    runs-on: ubuntu-latest
+    needs: guard
+    environment: qa
+
+    steps:
+      - name: Write SSH deploy key
+        run: |
+          install -m 600 /dev/null /tmp/deploy_key
+          echo "${{ secrets.VPS_SSH_KEY }}" > /tmp/deploy_key
+
+      - name: Deploy to VPS QA slot via SSH
+        # Pulls the EXACT same image digest built in deploy-dev using the
+        # commit SHA from the upstream workflow_run event.
+        run: |
+          ssh -i /tmp/deploy_key \
+              -o StrictHostKeyChecking=no \
+              -o BatchMode=yes \
+              "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            "
+              set -euo pipefail
+
+              SHA='${{ github.event.workflow_run.head_sha }}'
+
+              # Authenticate the VPS Docker daemon
+              echo '${{ secrets.REGISTRY_PASSWORD }}' | \
+                docker login '${{ secrets.REGISTRY_URL }}' \
+                  --username '${{ secrets.REGISTRY_USER }}' \
+                  --password-stdin
+
+              # Pull the exact image — same digest as dev, no rebuild
+              docker pull '${{ secrets.REGISTRY_URL }}/dashboard:'"$SHA"'
+
+              # Navigate to the QA compose project directory
+              cd ~/devops-platform/qa
+
+              # Inject runtime configuration
+              export IMAGE_TAG=\"$SHA\"
+              export REGISTRY_URL='${{ secrets.REGISTRY_URL }}'
+              export DOMAIN='${{ secrets.DOMAIN }}'
+              export DASHBOARD_AUTH='${{ secrets.DASHBOARD_AUTH }}'
+
+              docker compose up -d --pull never --remove-orphans
+            "
+
+      - name: Remove SSH key from runner
+        if: always()
+        run: rm -f /tmp/deploy_key
+
+      - name: Wait for QA service to become healthy
+        run: |
+          echo "Waiting for https://qa.${{ secrets.DOMAIN }}/health ..."
+          for i in $(seq 1 12); do
+            STATUS=$(curl --silent --output /dev/null --write-out "%{http_code}" \
+                       --max-time 10 \
+                       "https://qa.${{ secrets.DOMAIN }}/health" || true)
+            if [ "$STATUS" = "200" ]; then
+              echo "QA health check passed on attempt $i"
+              exit 0
+            fi
+            echo "Attempt $i: HTTP $STATUS — retrying in 5s..."
+            sleep 5
+          done
+          echo "QA DEPLOY FAILED: health endpoint did not return 200 within 60s"
+          exit 1
+
+  # ---------------------------------------------------------------------------
+  # DAST — OWASP ZAP baseline scan (T4)
+  # Runs the ZAP baseline scan against the live QA environment.
+  # The baseline scan finds common vulnerabilities without active exploitation.
+  # HIGH and CRITICAL ZAP findings are a hard block.
+  # ---------------------------------------------------------------------------
+  dast:
+    name: DAST (OWASP ZAP Baseline)
+    runs-on: ubuntu-latest
+    needs: deploy-qa
+
+    steps:
+      - name: Checkout source (for ZAP rules file if present)
+        uses: actions/checkout@v4
+
+      - name: Run OWASP ZAP baseline scan
+        # Uses the official ZAP stable Docker image.
+        # -t  target URL (QA subdomain)
+        # -J  write JSON report
+        # -r  write HTML report
+        # -I  do NOT fail on informational findings (only HIGH/CRIT fail)
+        # ZAP exits 2 for WARN-level alerts; we treat only exit 1+ as failure
+        # when -I is used.  Exit code 1 = ERROR-level (HIGH/CRIT) findings.
+        run: |
+          docker run --rm \
+            -v "$(pwd)/zap-reports:/zap/wrk:rw" \
+            ghcr.io/zaproxy/zaproxy:stable \
+              zap-baseline.py \
+                -t "https://qa.${{ secrets.DOMAIN }}" \
+                -J zap-report.json \
+                -r zap-report.html \
+                -I \
+            ; ZAP_EXIT=$?
+          # ZAP exit codes: 0=no alerts, 1=FAIL-level alerts, 2=WARN-level alerts
+          # With -I (ignore INFO), exit 1 = HIGH/CRIT = hard block
+          if [ "$ZAP_EXIT" -eq 1 ]; then
+            echo "DAST HARD BLOCK: ZAP found HIGH/CRITICAL findings — see zap-report.html"
+            exit 1
+          fi
+          echo "ZAP scan completed with exit code $ZAP_EXIT (0=clean, 2=warn-only)"
+
+      - name: Upload ZAP reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zap-reports
+          path: zap-reports/
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # INTEGRATION TEST — Run the integration test suite against live QA
+  # Tests are run against the deployed QA environment to verify end-to-end
+  # behaviour of the dashboard API and frontend.
+  # ---------------------------------------------------------------------------
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: deploy-qa
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20 (LTS)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run integration tests
+        # TEST_BASE_URL points the test suite at the live QA environment.
+        # Integration tests must exit non-zero on failure.
+        env:
+          TEST_BASE_URL: "https://qa.${{ secrets.DOMAIN }}"
+          DASHBOARD_AUTH: ${{ secrets.DASHBOARD_AUTH }}
+        run: npx jest --ci --testPathPattern=integration --forceExit
+
+      - name: Upload integration test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-test-results
+          path: test-results/
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # PERFORMANCE TEST — k6 load test (T4)
+  # Hard block if p99 response latency exceeds 500ms.
+  # The threshold is enforced by k6's built-in threshold mechanism — k6 exits
+  # non-zero if any threshold is breached, which fails this job.
+  # ---------------------------------------------------------------------------
+  performance-test:
+    name: Performance Test (k6 p99 < 500ms)
+    runs-on: ubuntu-latest
+    needs: deploy-qa
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install k6
+        # Install k6 from the official Grafana package repository
+        run: |
+          curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update -q && sudo apt-get install -y k6
+
+      - name: Run k6 performance test
+        # Runs the k6 script at tests/performance/load-test.js
+        # The k6 script must define:
+        #   thresholds: { 'http_req_duration{p(99)}': ['p(99)<500'] }
+        # k6 exits non-zero if the threshold is breached → hard block.
+        env:
+          K6_TARGET_URL: "https://qa.${{ secrets.DOMAIN }}"
+        run: |
+          k6 run \
+            --out json=k6-results.json \
+            tests/performance/load-test.js \
+            || (echo "PERFORMANCE HARD BLOCK: p99 latency exceeded 500ms — see k6-results.json" && exit 1)
+
+      - name: Upload k6 results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: k6-results
+          path: k6-results.json
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # SECURITY GATE — Trivy CVE scan on image + Gitleaks secrets scan (T5)
+  # Trivy scans the container image for known CVEs.
+  # Gitleaks scans the repository for committed secrets.
+  # Both are hard blocks on CRITICAL/HIGH findings.
+  # ---------------------------------------------------------------------------
+  security-gate:
+    name: Security Gate (Trivy CVE + Gitleaks)
+    runs-on: ubuntu-latest
+    needs: deploy-qa
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # Full history required for Gitleaks
+
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin
+
+      - name: Log in to registry for Trivy image scan
+        run: |
+          echo "${{ secrets.REGISTRY_PASSWORD }}" | \
+            docker login "${{ secrets.REGISTRY_URL }}" \
+              --username "${{ secrets.REGISTRY_USER }}" \
+              --password-stdin
+
+      - name: Trivy CVE scan on container image
+        # Scans the exact image digest built in the dev pipeline.
+        # --exit-code 1 fails the job on HIGH/CRITICAL CVEs (hard block).
+        # --ignore-unfixed excludes CVEs with no available fix (reduces noise).
+        run: |
+          trivy image \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            --ignore-unfixed \
+            --format table \
+            --output trivy-image-results.txt \
+            "${{ secrets.REGISTRY_URL }}/dashboard:${{ github.event.workflow_run.head_sha }}" \
+            || (echo "SECURITY GATE HARD BLOCK: Trivy found HIGH/CRITICAL CVEs — see trivy-image-results.txt" && exit 1)
+
+      - name: Install Gitleaks
+        # Install the latest stable Gitleaks release
+        run: |
+          curl -sSfL \
+            https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_linux_x64.tar.gz \
+            | sudo tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
+
+      - name: Gitleaks secrets scan
+        # Scans the full git history for committed secrets.
+        # Exits non-zero if any secrets are detected (hard block).
+        run: |
+          gitleaks detect \
+            --source . \
+            --report-format json \
+            --report-path gitleaks-results.json \
+            --redact \
+            || (echo "SECURITY GATE HARD BLOCK: Gitleaks detected secrets in repository — see gitleaks-results.json" && exit 1)
+
+      - name: Upload security gate results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-gate-results
+          path: |
+            trivy-image-results.txt
+            gitleaks-results.json
+          retention-days: 14

@@ -1,0 +1,102 @@
+{
+  "project_id": "proj_vps_devops_platform",
+  "project_name": "VPS Self-Hosted DevOps Platform",
+  "description": "A fully self-hosted DevOps platform running on a VPS, centred around a custom container management dashboard, with GitHub for source control and CI/CD, Traefik for reverse proxy and SSL, and a full security gauntlet pipeline.",
+
+  "stack": {
+    "source_control": "GitHub",
+    "cicd_platform": "GitHub Actions",
+    "container_registry": "GitHub Container Registry (ghcr.io) or operator-configured OCI registry",
+    "reverse_proxy": "Traefik",
+    "ssl": "Traefik + Let's Encrypt (automatic)",
+    "iac_tool": "Docker Compose",
+    "secret_store": "GitHub Actions repository/environment secrets",
+    "sast_tool": "Semgrep",
+    "cve_iac_scanner": "Trivy",
+    "dast_tool": "OWASP ZAP",
+    "credential_detection": "Gitleaks",
+    "language": "TypeScript (Node.js) for dashboard backend; React for dashboard frontend",
+    "runtime": "Node.js 20 (LTS)"
+  },
+
+  "dashboard": {
+    "description": "Custom web UI — the centrepiece of the platform",
+    "features": [
+      "List all containers with running/stopped/errored status",
+      "Start, stop, restart controls per container",
+      "CPU and memory usage per container",
+      "Server time and date",
+      "Remaining disk space",
+      "Remaining RAM",
+      "Server uptime"
+    ],
+    "access": "Served by Traefik via subdomain (e.g. dashboard.yourdomain.com)",
+    "auth": "Basic auth or simple login page",
+    "docker_socket": "Read + control access to Docker socket"
+  },
+
+  "environments": {
+    "dev": {
+      "description": "Feature branch — redeploy on push",
+      "persistent": false
+    },
+    "qa": {
+      "description": "Spun up on PR open, torn down after merge to main",
+      "persistent": false
+    },
+    "prod": {
+      "description": "Persistent — Traefik routes live traffic — manual approval gate",
+      "persistent": true,
+      "approval_gate": true
+    }
+  },
+
+  "deployment_model": "Build once in dev (image digest), promote same image to QA, then prod (no rebuild)",
+
+  "pipeline_stages": ["T1_unit_integration", "T2_sast", "T3_iac_scan", "T4_dast_perf", "T5_policy_gate"],
+
+  "gauntlet": {
+    "T1": "Unit + integration tests (>=80% coverage) — hard block on failure",
+    "T2": "SAST via Semgrep — CRITICAL/HIGH = hard block",
+    "T3": "IaC scan via Trivy on Compose files + Dockerfiles — HIGH = hard block",
+    "T4": "DAST via OWASP ZAP against live QA slot (HIGH/CRIT = hard block) + k6 p99 < 500ms",
+    "T5": "Policy gate — Trivy CVE scan + Gitleaks secrets scan"
+  },
+
+  "security_rules": [
+    "Agents never handle, request, store, or transmit credentials",
+    "Credential needed → AWAITING_HUMAN_SECRET (full halt)",
+    "Credential detected in context → CREDENTIAL_LEAKED (full halt)",
+    "Secrets via GitHub Actions repository/environment secrets only",
+    "CRITICAL/HIGH findings cannot be auto-suppressed",
+    "3 gauntlet failures on same story → NEEDS_HUMAN state"
+  ],
+
+  "agent_rules": [
+    "Agents never touch main directly — always PRs",
+    "All 5 gauntlet gates required — no skipping without human waiver",
+    "All state persisted in docs/execution-log.json"
+  ],
+
+  "human_gates": [
+    "brief_confirm",
+    "planning_pr_approval",
+    "execute_command",
+    "story_pr_merge",
+    "prod_deployment_approval",
+    "credential_actions"
+  ],
+
+  "constraints": {
+    "approver": "Helmwill",
+    "budget_usd_month": 0,
+    "cloud_infra_required": false,
+    "azure_infra_required": false,
+    "notifications_channel": null,
+    "concurrency_default": 2,
+    "concurrency_max": 5
+  },
+
+  "confirmed_at": "2026-03-12",
+  "status": "PLANNING_IN_PROGRESS"
+}
