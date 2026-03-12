@@ -1,0 +1,85 @@
+---
+# Traefik v2 reverse proxy stack
+# Deploy this FIRST before any other stack.
+# Requires the external network `traefik-public` to exist:
+#   docker network create traefik-public
+
+networks:
+  traefik-public:
+    external: true
+
+volumes:
+  traefik-acme:
+    driver: local
+
+services:
+  traefik:
+    image: traefik:v2.11
+    container_name: traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Used by Traefik only at startup; no secrets are inlined here.
+      - TRAEFIK_DASHBOARD_AUTH=${TRAEFIK_DASHBOARD_AUTH}   # htpasswd string for dashboard basic-auth
+    volumes:
+      # Read-only Docker socket so Traefik can discover containers
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Persist ACME/Let's Encrypt certificates
+      - traefik-acme:/acme
+    command:
+      # --- Global ---
+      - --global.checkNewVersion=false
+      - --global.sendAnonymousUsage=false
+
+      # --- API / Dashboard (protected, not exposed publicly) ---
+      - --api.dashboard=true
+      - --api.insecure=false
+
+      # --- Logging ---
+      - --log.level=INFO
+
+      # --- Entrypoints ---
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+
+      # HTTP → HTTPS global redirect
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.web.http.redirections.entrypoint.permanent=true
+
+      # --- Docker provider ---
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=traefik-public
+
+      # --- Let's Encrypt ACME (HTTP-01 challenge) ---
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
+
+    labels:
+      - "traefik.enable=true"
+
+      # ---- Dashboard router (internal subdomain, basic-auth protected) ----
+      - "traefik.http.routers.traefik-dashboard.rule=Host(`traefik.${DOMAIN}`)"
+      - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.traefik-dashboard.tls=true"
+      - "traefik.http.routers.traefik-dashboard.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.traefik-dashboard.service=api@internal"
+      - "traefik.http.routers.traefik-dashboard.middlewares=traefik-auth"
+
+      # Basic-auth middleware — value comes from TRAEFIK_DASHBOARD_AUTH env var
+      # Generate with: htpasswd -nb <user> <password>
+      - "traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_DASHBOARD_AUTH}"
+
+      # Shared HTTPS redirect middleware (available to all stacks)
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.permanent=true"
+
+    networks:
+      - traefik-public

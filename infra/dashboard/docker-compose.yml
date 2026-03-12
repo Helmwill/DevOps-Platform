@@ -1,0 +1,52 @@
+---
+# Custom Dashboard stack
+# Image is a placeholder — replace with a real build once the Code Builder
+# has produced the dashboard image and pushed it to the registry.
+#
+# Depends on the Traefik stack being up and `traefik-public` network existing.
+
+networks:
+  traefik-public:
+    external: true
+
+services:
+
+  dashboard:
+    image: ${REGISTRY_URL}/dashboard:${IMAGE_TAG:-latest}
+    container_name: dashboard
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      # Read-only Docker socket — lets the dashboard query running containers
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      # Pass through any runtime config the dashboard app needs
+      NODE_ENV: production
+      DOMAIN: ${DOMAIN}
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+
+      # ---- HTTP router (redirect to HTTPS) ----
+      - "traefik.http.routers.dashboard-http.rule=Host(`dashboard.${DOMAIN}`)"
+      - "traefik.http.routers.dashboard-http.entrypoints=web"
+      - "traefik.http.routers.dashboard-http.middlewares=redirect-to-https"
+
+      # ---- HTTPS router ----
+      - "traefik.http.routers.dashboard.rule=Host(`dashboard.${DOMAIN}`)"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls=true"
+      - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.dashboard.middlewares=dashboard-auth"
+
+      # ---- Backend service port ----
+      - "traefik.http.services.dashboard.loadbalancer.server.port=${DASHBOARD_PORT:-3000}"
+
+      # ---- Basic-auth middleware ----
+      # DASHBOARD_AUTH must be a valid htpasswd string, e.g.:
+      #   htpasswd -nb admin <password>
+      # Store the output in your .env or secrets manager — never inline it.
+      - "traefik.http.middlewares.dashboard-auth.basicauth.users=${DASHBOARD_AUTH}"
