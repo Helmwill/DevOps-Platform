@@ -25,6 +25,7 @@ services:
     environment:
       # Used by Traefik only at startup; no secrets are inlined here.
       - TRAEFIK_DASHBOARD_AUTH=${TRAEFIK_DASHBOARD_AUTH}   # htpasswd string for dashboard basic-auth
+      - DOMAIN=${DOMAIN}
     volumes:
       # Read-only Docker socket so Traefik can discover containers
       - /var/run/docker.sock:/var/run/docker.sock:ro
