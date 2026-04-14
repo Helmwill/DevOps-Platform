@@ -73,7 +73,7 @@ network traefik-public declared as external, but could not be found
 
 2. **Create the shared network:**
 
-   ```bash
+   ```bash   
    docker network create traefik-public
    ```
 
