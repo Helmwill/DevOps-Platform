@@ -24,13 +24,31 @@ concurrency:
 jobs:
 
   # ---------------------------------------------------------------------------
+  # DETECT-CHANGES — check which service directories exist (post-checkout)
+  # hashFiles() is only valid in step contexts, not job-level if: conditions.
+  # ---------------------------------------------------------------------------
+  detect-changes:
+    name: Detect Service Directories
+    runs-on: ubuntu-latest
+    outputs:
+      has-backend: ${{ steps.check.outputs.has-backend }}
+      has-frontend: ${{ steps.check.outputs.has-frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        run: |
+          [ -f dashboard/backend/package.json ]  && echo "has-backend=true"  >> "$GITHUB_OUTPUT" || echo "has-backend=false"  >> "$GITHUB_OUTPUT"
+          [ -f dashboard/frontend/package.json ] && echo "has-frontend=true" >> "$GITHUB_OUTPUT" || echo "has-frontend=false" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
   # LINT — ESLint for backend and frontend
   # Skipped when service directories don't exist yet (infra-only PRs).
   # ---------------------------------------------------------------------------
   lint-backend:
     name: Lint Backend (ESLint)
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('dashboard/backend/package.json') != '' }}
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has-backend == 'true'
 
     steps:
       - name: Checkout source
@@ -54,7 +72,8 @@ jobs:
   lint-frontend:
     name: Lint Frontend (ESLint)
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('dashboard/frontend/package.json') != '' }}
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has-frontend == 'true'
 
     steps:
       - name: Checkout source
@@ -83,7 +102,8 @@ jobs:
   unit-test-backend:
     name: Unit Tests Backend (Jest ≥80% coverage)
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('dashboard/backend/package.json') != '' }}
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has-backend == 'true'
 
     steps:
       - name: Checkout source
@@ -115,7 +135,8 @@ jobs:
   unit-test-frontend:
     name: Unit Tests Frontend (Vitest ≥80% coverage)
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('dashboard/frontend/package.json') != '' }}
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has-frontend == 'true'
 
     steps:
       - name: Checkout source
