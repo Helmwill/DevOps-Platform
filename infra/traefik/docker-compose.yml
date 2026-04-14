@@ -26,6 +26,7 @@ services:
       # Used by Traefik only at startup; no secrets are inlined here.
       - TRAEFIK_DASHBOARD_AUTH=${TRAEFIK_DASHBOARD_AUTH}   # htpasswd string for dashboard basic-auth
       - DOMAIN=${DOMAIN}
+      - ACME_EMAIL=${ACME_EMAIL}
     volumes:
       # Read-only Docker socket so Traefik can discover containers
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -39,27 +40,23 @@ services:
       # --- API / Dashboard (protected, not exposed publicly) ---
       - --api.dashboard=true
       - --api.insecure=false
-
+      - --ping=true
       # --- Logging ---
-      - --log.level=INFO
+      - --log.level=DEBUG
 
       # --- Entrypoints ---
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
-
       # HTTP → HTTPS global redirect
       - --entrypoints.web.http.redirections.entrypoint.to=websecure
       - --entrypoints.web.http.redirections.entrypoint.scheme=https
       - --entrypoints.web.http.redirections.entrypoint.permanent=true
-
       # --- Docker provider ---
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
       - --providers.docker.network=traefik-public
-
-      # --- Let's Encrypt ACME (HTTP-01 challenge) ---
-      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
-      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      # --- Let's Encrypt ACME (TLS-ALPN-01 challenge) ---
+      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
       - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
       - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
 
@@ -82,11 +79,5 @@ services:
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.permanent=true"
 
-    healthcheck:
-      test: ["CMD", "traefik", "healthcheck"]
-      interval: 30s
-      timeout: 5s
-      start_period: 10s
-      retries: 3
     networks:
       - traefik-public
