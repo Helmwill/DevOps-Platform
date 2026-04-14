@@ -60,6 +60,7 @@ docker network create traefik-public
 
 If you attempt to bring up any stack before creating the network you will see:
 
+
 ```
 network traefik-public declared as external, but could not be found
 ```
