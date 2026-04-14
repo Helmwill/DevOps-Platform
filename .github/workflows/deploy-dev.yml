@@ -2,6 +2,12 @@
 # DEPLOY DEV — Build both images, push to registry, deploy to dev slot
 # Trigger: push to the `dev` branch
 #
+# Branch strategy:
+#   dev   → triggers this pipeline (dev → QA → prod promotion chain)
+#   main  → production branch; represents what is live in production.
+#           PRs should target `dev`, not `main`.  `main` is updated via
+#           a merge from `dev` after a successful production deployment.
+#
 # Jobs:
 #   build            — Build dashboard-backend and dashboard-frontend images
 #   deploy-dev       — SSH to VPS, pull both images, docker compose up -d

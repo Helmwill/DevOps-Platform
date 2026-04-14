@@ -2,6 +2,13 @@
 # DEPLOY PROD — Promote QA-verified image to production with manual gate
 # Trigger: workflow_run — runs only after deploy-qa completes successfully
 #
+# Branch strategy:
+#   main  → production branch; represents exactly what is live in production.
+#           Do NOT open PRs directly to `main` — they will not trigger any
+#           deployment pipeline.  All changes flow through `dev` first.
+#   dev   → integration branch; the entry point for the deployment chain.
+#           Merge PRs to `dev` to trigger: dev → QA → prod (this workflow).
+#
 # Jobs:
 #   guard            — Abort if Deploy QA did not succeed
 #   approval-gate    — Pauses for manual approval (GitHub environment protection)

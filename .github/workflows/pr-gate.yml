@@ -2,6 +2,10 @@
 # PR GATE — Security & Quality Gauntlet (T1 + T2 + T3)
 # Trigger: any pull_request event against any branch
 #
+# Branch strategy:
+#   dev   → target branch for all PRs; merging here starts the deployment chain.
+#   main  → production branch (do NOT raise PRs directly to `main`).
+#
 # Gates (all required — failure blocks merge):
 #   lint          — ESLint code style enforcement
 #   unit-test     — Jest unit tests with >=80% coverage gate
