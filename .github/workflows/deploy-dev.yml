@@ -104,7 +104,7 @@ jobs:
               docker pull '${{ secrets.REGISTRY_URL }}/dashboard-backend:${{ github.sha }}'
               docker pull '${{ secrets.REGISTRY_URL }}/dashboard-frontend:${{ github.sha }}'
 
-              git -C ~/DevOps-Platform pull
+              git -C ~/DevOps-Platform fetch origin && git -C ~/DevOps-Platform checkout main && git -C ~/DevOps-Platform pull origin main
 
               cd ~/DevOps-Platform/dev
 
