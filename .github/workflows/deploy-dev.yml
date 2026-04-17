@@ -37,10 +37,6 @@ jobs:
     name: Build & Push Docker Images
     runs-on: ubuntu-latest
 
-    outputs:
-      backend_image_ref: ${{ steps.set-refs.outputs.backend_image_ref }}
-      frontend_image_ref: ${{ steps.set-refs.outputs.frontend_image_ref }}
-
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -75,13 +71,6 @@ jobs:
           docker push "${{ secrets.REGISTRY_URL }}/dashboard-backend:${{ github.sha }}"
           docker push "${{ secrets.REGISTRY_URL }}/dashboard-frontend:${{ github.sha }}"
 
-      - name: Set image reference outputs
-        id: set-refs
-        run: |
-          echo "backend_image_ref=${{ secrets.REGISTRY_URL }}/dashboard-backend:${{ github.sha }}" \
-            >> "$GITHUB_OUTPUT"
-          echo "frontend_image_ref=${{ secrets.REGISTRY_URL }}/dashboard-frontend:${{ github.sha }}" \
-            >> "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------------------
   # DEPLOY DEV — Pull both images to VPS dev slot and bring up the stack
@@ -112,8 +101,8 @@ jobs:
                   --username '${{ secrets.REGISTRY_USER }}' \
                   --password-stdin
 
-              docker pull '${{ needs.build.outputs.backend_image_ref }}'
-              docker pull '${{ needs.build.outputs.frontend_image_ref }}'
+              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-backend:${{ github.sha }}'
+              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-frontend:${{ github.sha }}'
 
               cd ~/devops-platform/dev
 
