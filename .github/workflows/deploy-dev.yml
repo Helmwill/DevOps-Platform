@@ -104,6 +104,8 @@ jobs:
               docker pull '${{ secrets.REGISTRY_URL }}/dashboard-backend:${{ github.sha }}'
               docker pull '${{ secrets.REGISTRY_URL }}/dashboard-frontend:${{ github.sha }}'
 
+              git -C ~/DevOps-Platform pull
+
               cd ~/DevOps-Platform/dev
 
               export IMAGE_TAG='${{ github.sha }}'
