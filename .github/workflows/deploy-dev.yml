@@ -114,6 +114,11 @@ jobs:
               export DASHBOARD_AUTH='${{ secrets.DASHBOARD_AUTH }}'
 
               docker compose up -d --pull never --remove-orphans
+
+              echo "=== Container status after deploy ==="
+              docker compose ps
+              echo "=== Backend logs (last 20 lines) ==="
+              docker compose logs --tail=20 dashboard-backend-dev
             "
 
       - name: Remove SSH key from runner
@@ -131,16 +136,26 @@ jobs:
     steps:
       - name: Wait for dev service to become healthy
         run: |
+          echo "=== DNS check ==="
+          nslookup "dev.${{ secrets.DOMAIN }}" || echo "WARNING: DNS lookup failed for dev.${{ secrets.DOMAIN }}"
+
+          echo "=== TCP reachability on port 443 ==="
+          nc -zv -w5 "dev.${{ secrets.DOMAIN }}" 443 2>&1 || echo "WARNING: port 443 not reachable"
+
+          echo "=== Health check loop ==="
           echo "Checking https://dev.${{ secrets.DOMAIN }}/health ..."
           for i in $(seq 1 12); do
-            STATUS=$(curl --silent --output /dev/null --write-out "%{http_code}" \
-                       --max-time 10 \
-                       "https://dev.${{ secrets.DOMAIN }}/health" || true)
+            STATUS=$(curl --no-progress-meter \
+                         --output /dev/null \
+                         --write-out "%{http_code}" \
+                         --max-time 10 \
+                         "https://dev.${{ secrets.DOMAIN }}/health" 2>/tmp/curl_err || true)
+            CURL_ERR=$(cat /tmp/curl_err 2>/dev/null || true)
             if [ "$STATUS" = "200" ]; then
               echo "Health check passed (HTTP $STATUS) on attempt $i"
               exit 0
             fi
-            echo "Attempt $i: got HTTP $STATUS — retrying in 5s..."
+            echo "Attempt $i: HTTP $STATUS — ${CURL_ERR:-no error detail}"
             sleep 5
           done
           echo "SMOKE TEST FAILED: dev.${{ secrets.DOMAIN }}/health did not return 200 within 60s"
