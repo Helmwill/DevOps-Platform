@@ -43,13 +43,10 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Install actionlint
+      - name: Install actionlint and shellcheck
         run: |
-          curl -sL "https://github.com/rhysd/actionlint/releases/latest/download/actionlint_$(curl -s https://api.github.com/repos/rhysd/actionlint/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | sed 's/^v//')_linux_amd64.tar.gz" \
-            | tar -xz -C /usr/local/bin actionlint
-
-      - name: Install shellcheck
-        run: sudo apt-get install -y shellcheck
+          bash <(curl -sL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) latest /usr/local/bin
+          sudo apt-get install -y shellcheck
 
       - name: Run actionlint
         # actionlint automatically invokes shellcheck on all run: blocks.
