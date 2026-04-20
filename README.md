@@ -67,7 +67,7 @@ network traefik-public declared as external, but could not be found
 
 ---
 
-## Quick Start
+##  Quick Start
 
 1. **Prerequisites** -- see [infra/README.md](infra/README.md#prerequisites) for the
    full list (Docker >= 24, domain name, DNS A records, open ports 80/443).
