@@ -7,6 +7,7 @@
 #   main  → production branch (do NOT raise PRs directly to `main`).
 #
 # Gates (all required — failure blocks merge):
+#   pipeline-lint — actionlint on all workflow YAML + shellcheck on run: blocks
 #   lint          — ESLint code style enforcement
 #   unit-test     — Jest unit tests with >=80% coverage gate
 #   sast          — Semgrep SAST (CRITICAL/HIGH = hard block)
@@ -26,6 +27,43 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+
+  # ---------------------------------------------------------------------------
+  # PIPELINE LINT — actionlint + shellcheck on all workflow files
+  # actionlint validates GitHub Actions YAML syntax and expression types, and
+  # runs shellcheck on every `run:` block — catching quoting bugs, unbound
+  # variables, and local-vs-remote shell expansion errors before they reach a VPS.
+  # Hard block: any finding fails the job.
+  # ---------------------------------------------------------------------------
+  pipeline-lint:
+    name: Pipeline Lint (actionlint + shellcheck)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install actionlint
+        run: |
+          curl -sL "https://github.com/rhysd/actionlint/releases/latest/download/actionlint_$(curl -s https://api.github.com/repos/rhysd/actionlint/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | sed 's/^v//')_linux_amd64.tar.gz" \
+            | tar -xz -C /usr/local/bin actionlint
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Run actionlint
+        # actionlint automatically invokes shellcheck on all run: blocks.
+        # -color off keeps output readable in CI logs.
+        run: |
+          actionlint -color=false .github/workflows/*.yml \
+            || (echo "PIPELINE LINT HARD BLOCK: actionlint found errors in workflow files" && exit 1)
+
+      - name: Run shellcheck on standalone scripts
+        # Catches issues in any .sh files committed to the repo.
+        run: |
+          find . -name '*.sh' -not -path './.git/*' \
+            | xargs --no-run-if-empty shellcheck \
+            || (echo "PIPELINE LINT HARD BLOCK: shellcheck found errors in shell scripts" && exit 1)
 
   # ---------------------------------------------------------------------------
   # DETECT-CHANGES — check which service directories exist (post-checkout)
