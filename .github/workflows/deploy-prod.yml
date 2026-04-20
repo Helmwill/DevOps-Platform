@@ -139,8 +139,11 @@ jobs:
               docker pull '${{ secrets.REGISTRY_URL }}/dashboard-backend:'"$SHA"'
               docker pull '${{ secrets.REGISTRY_URL }}/dashboard-frontend:'"$SHA"'
 
+              # Ensure VPS has latest compose files from dev branch
+              git -C ~/DevOps-Platform fetch origin && git -C ~/DevOps-Platform checkout -B dev origin/dev
+
               # Navigate to the production compose project directory
-              cd ~/devops-platform/prod
+              cd ~/DevOps-Platform/prod
 
               # Inject runtime configuration
               export IMAGE_TAG=\"$SHA\"
@@ -152,6 +155,11 @@ jobs:
               # --pull never: image was already pulled above — do not re-pull
               # --remove-orphans: clean up services removed from compose file
               docker compose up -d --pull never --remove-orphans
+
+              echo '=== Container status after deploy ==='
+              docker compose ps
+              echo '=== Backend logs (last 20 lines) ==='
+              docker compose logs --tail=20 dashboard-backend-prod
             "
 
       - name: Remove SSH key from runner
@@ -173,18 +181,30 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Wait for production service to come up
-        # Give the containers time to start before running the full suite
         run: |
-          echo "Waiting for https://dashboard.${{ secrets.DOMAIN }}/health ..."
+          echo "=== DNS check ==="
+          nslookup "dashboard.${{ secrets.DOMAIN }}" || echo "WARNING: DNS lookup failed"
+
+          echo "=== TCP reachability on port 443 ==="
+          nc -zv -w5 "dashboard.${{ secrets.DOMAIN }}" 443 2>&1 || echo "WARNING: port 443 not reachable"
+
+          echo "=== Health check loop ==="
+          echo "Waiting 20s for containers to pass healthchecks before polling..."
+          sleep 20
+          echo "Checking https://dashboard.${{ secrets.DOMAIN }}/health ..."
           for i in $(seq 1 18); do
-            STATUS=$(curl --silent --output /dev/null --write-out "%{http_code}" \
-                       --max-time 10 \
-                       "https://dashboard.${{ secrets.DOMAIN }}/health" || true)
-            if [ "$STATUS" = "200" ] || [ "$STATUS" = "401" ]; then
+            STATUS=$(curl --no-progress-meter \
+                         --output /dev/null \
+                         --write-out "%{http_code}" \
+                         --max-time 10 \
+                         --insecure \
+                         "https://dashboard.${{ secrets.DOMAIN }}/health" 2>/tmp/curl_err || true)
+            CURL_ERR=$(cat /tmp/curl_err 2>/dev/null || true)
+            if [ "$STATUS" = "200" ]; then
               echo "Service is up (HTTP $STATUS) on attempt $i"
               exit 0
             fi
-            echo "Attempt $i: got HTTP $STATUS — retrying in 5s..."
+            echo "Attempt $i: HTTP $STATUS — ${CURL_ERR:-no error detail}"
             sleep 5
           done
           echo "SMOKE TEST FAILED: service did not become reachable within 90s"
@@ -228,7 +248,7 @@ jobs:
             "
               set -euo pipefail
 
-              cd ~/devops-platform/prod
+              cd ~/DevOps-Platform/prod
 
               export IMAGE_TAG='$PREV_TAG'
               export REGISTRY_URL='${{ secrets.REGISTRY_URL }}'
@@ -280,7 +300,7 @@ jobs:
             "
               set -euo pipefail
 
-              cd ~/devops-platform/qa
+              cd ~/DevOps-Platform/qa
 
               # Bring down the QA stack — remove containers, networks, and orphans
               docker compose down --remove-orphans

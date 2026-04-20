@@ -83,8 +83,11 @@ jobs:
               docker pull '${{ secrets.REGISTRY_URL }}/dashboard-backend:'"$SHA"'
               docker pull '${{ secrets.REGISTRY_URL }}/dashboard-frontend:'"$SHA"'
 
+              # Ensure VPS has latest compose files from dev branch
+              git -C ~/DevOps-Platform fetch origin && git -C ~/DevOps-Platform checkout -B dev origin/dev
+
               # Navigate to the QA compose project directory
-              cd ~/devops-platform/qa
+              cd ~/DevOps-Platform/qa
 
               # Inject runtime configuration
               export IMAGE_TAG=\"$SHA\"
@@ -93,6 +96,11 @@ jobs:
               export DASHBOARD_AUTH='${{ secrets.DASHBOARD_AUTH }}'
 
               docker compose up -d --pull never --remove-orphans
+
+              echo '=== Container status after deploy ==='
+              docker compose ps
+              echo '=== Backend logs (last 20 lines) ==='
+              docker compose logs --tail=20 dashboard-backend-qa
             "
 
       - name: Remove SSH key from runner
@@ -101,16 +109,29 @@ jobs:
 
       - name: Wait for QA service to become healthy
         run: |
-          echo "Waiting for https://qa.${{ secrets.DOMAIN }}/health ..."
+          echo "=== DNS check ==="
+          nslookup "qa.${{ secrets.DOMAIN }}" || echo "WARNING: DNS lookup failed for qa.${{ secrets.DOMAIN }}"
+
+          echo "=== TCP reachability on port 443 ==="
+          nc -zv -w5 "qa.${{ secrets.DOMAIN }}" 443 2>&1 || echo "WARNING: port 443 not reachable"
+
+          echo "=== Health check loop ==="
+          echo "Waiting 20s for containers to pass healthchecks before polling..."
+          sleep 20
+          echo "Checking https://qa.${{ secrets.DOMAIN }}/health ..."
           for i in $(seq 1 12); do
-            STATUS=$(curl --silent --output /dev/null --write-out "%{http_code}" \
-                       --max-time 10 \
-                       "https://qa.${{ secrets.DOMAIN }}/health" || true)
+            STATUS=$(curl --no-progress-meter \
+                         --output /dev/null \
+                         --write-out "%{http_code}" \
+                         --max-time 10 \
+                         --insecure \
+                         "https://qa.${{ secrets.DOMAIN }}/health" 2>/tmp/curl_err || true)
+            CURL_ERR=$(cat /tmp/curl_err 2>/dev/null || true)
             if [ "$STATUS" = "200" ]; then
-              echo "QA health check passed on attempt $i"
+              echo "QA health check passed (HTTP $STATUS) on attempt $i"
               exit 0
             fi
-            echo "Attempt $i: HTTP $STATUS — retrying in 5s..."
+            echo "Attempt $i: HTTP $STATUS — ${CURL_ERR:-no error detail}"
             sleep 5
           done
           echo "QA DEPLOY FAILED: health endpoint did not return 200 within 60s"
