@@ -136,8 +136,8 @@ jobs:
                   --password-stdin
 
               # Pull the exact images that were verified in QA — no rebuild
-              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-backend:'"$SHA"
-              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-frontend:'"$SHA"
+              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-backend:'"\$SHA"
+              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-frontend:'"\$SHA"
 
               # Ensure VPS has latest compose files from dev branch
               git -C ~/DevOps-Platform fetch origin && git -C ~/DevOps-Platform checkout -B dev origin/dev
@@ -146,7 +146,7 @@ jobs:
               cd ~/DevOps-Platform/prod
 
               # Inject runtime configuration
-              export IMAGE_TAG=\"$SHA\"
+              export IMAGE_TAG=\"\$SHA\"
               export REGISTRY_URL='${{ secrets.REGISTRY_URL }}'
               export DOMAIN='${{ secrets.DOMAIN }}'
               export DASHBOARD_AUTH='${{ secrets.DASHBOARD_AUTH }}'
