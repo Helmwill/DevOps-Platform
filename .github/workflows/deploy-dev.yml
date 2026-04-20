@@ -149,6 +149,7 @@ jobs:
                          --output /dev/null \
                          --write-out "%{http_code}" \
                          --max-time 10 \
+                         --insecure \
                          "https://dev.${{ secrets.DOMAIN }}/health" 2>/tmp/curl_err || true)
             CURL_ERR=$(cat /tmp/curl_err 2>/dev/null || true)
             if [ "$STATUS" = "200" ]; then
