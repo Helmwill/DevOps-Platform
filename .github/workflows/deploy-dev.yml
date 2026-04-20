@@ -104,7 +104,7 @@ jobs:
               docker pull '${{ secrets.REGISTRY_URL }}/dashboard-backend:${{ github.sha }}'
               docker pull '${{ secrets.REGISTRY_URL }}/dashboard-frontend:${{ github.sha }}'
 
-              git -C ~/DevOps-Platform fetch origin && git -C ~/DevOps-Platform checkout dev && git -C ~/DevOps-Platform pull origin dev
+              git -C ~/DevOps-Platform fetch origin && git -C ~/DevOps-Platform checkout dev && git -C ~/DevOps-Platform pull
 
               cd ~/DevOps-Platform/dev
 
@@ -143,6 +143,8 @@ jobs:
           nc -zv -w5 "dev.${{ secrets.DOMAIN }}" 443 2>&1 || echo "WARNING: port 443 not reachable"
 
           echo "=== Health check loop ==="
+          echo "Waiting 20s for containers to pass healthchecks before polling..."
+          sleep 20
           echo "Checking https://dev.${{ secrets.DOMAIN }}/health ..."
           for i in $(seq 1 12); do
             STATUS=$(curl --no-progress-meter \
