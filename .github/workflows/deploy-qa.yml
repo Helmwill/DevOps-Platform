@@ -71,8 +71,6 @@ jobs:
             "
               set -euo pipefail
 
-              SHA='${{ github.event.workflow_run.head_sha }}'
-
               # Authenticate the VPS Docker daemon
               echo '${{ secrets.REGISTRY_PASSWORD }}' | \
                 docker login '${{ secrets.REGISTRY_URL }}' \
@@ -80,8 +78,8 @@ jobs:
                   --password-stdin
 
               # Pull the exact images — same digests as dev, no rebuild
-              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-backend:'"\$SHA"
-              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-frontend:'"\$SHA"
+              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-backend:${{ github.event.workflow_run.head_sha }}'
+              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-frontend:${{ github.event.workflow_run.head_sha }}'
 
               # Ensure VPS has latest compose files from dev branch
               git -C ~/DevOps-Platform fetch origin && git -C ~/DevOps-Platform checkout -B dev origin/dev
@@ -90,7 +88,7 @@ jobs:
               cd ~/DevOps-Platform/qa
 
               # Inject runtime configuration
-              export IMAGE_TAG=\"\$SHA\"
+              export IMAGE_TAG='${{ github.event.workflow_run.head_sha }}'
               export REGISTRY_URL='${{ secrets.REGISTRY_URL }}'
               export DOMAIN='${{ secrets.DOMAIN }}'
               export DASHBOARD_AUTH='${{ secrets.DASHBOARD_AUTH }}'

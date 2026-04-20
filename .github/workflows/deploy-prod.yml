@@ -127,8 +127,6 @@ jobs:
             "
               set -euo pipefail
 
-              SHA='${{ github.event.workflow_run.head_sha }}'
-
               # Authenticate the VPS Docker daemon with the registry
               echo '${{ secrets.REGISTRY_PASSWORD }}' | \
                 docker login '${{ secrets.REGISTRY_URL }}' \
@@ -136,8 +134,8 @@ jobs:
                   --password-stdin
 
               # Pull the exact images that were verified in QA — no rebuild
-              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-backend:'"\$SHA"
-              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-frontend:'"\$SHA"
+              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-backend:${{ github.event.workflow_run.head_sha }}'
+              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-frontend:${{ github.event.workflow_run.head_sha }}'
 
               # Ensure VPS has latest compose files from dev branch
               git -C ~/DevOps-Platform fetch origin && git -C ~/DevOps-Platform checkout -B dev origin/dev
@@ -146,7 +144,7 @@ jobs:
               cd ~/DevOps-Platform/prod
 
               # Inject runtime configuration
-              export IMAGE_TAG=\"\$SHA\"
+              export IMAGE_TAG='${{ github.event.workflow_run.head_sha }}'
               export REGISTRY_URL='${{ secrets.REGISTRY_URL }}'
               export DOMAIN='${{ secrets.DOMAIN }}'
               export DASHBOARD_AUTH='${{ secrets.DASHBOARD_AUTH }}'
@@ -250,7 +248,7 @@ jobs:
 
               cd ~/DevOps-Platform/prod
 
-              export IMAGE_TAG='$PREV_TAG'
+              export IMAGE_TAG='${{ needs.deploy-prod.outputs.prev_image_tag }}'
               export REGISTRY_URL='${{ secrets.REGISTRY_URL }}'
               export DOMAIN='${{ secrets.DOMAIN }}'
               export DASHBOARD_AUTH='${{ secrets.DASHBOARD_AUTH }}'
@@ -258,7 +256,7 @@ jobs:
               # Re-deploy using the previous image — already present on the host
               docker compose up -d --pull never --remove-orphans
 
-              echo 'Rollback complete — running image: $PREV_TAG'
+              echo 'Rollback complete — running image: ${{ needs.deploy-prod.outputs.prev_image_tag }}'
             "
 
       - name: Remove SSH key from runner
@@ -267,10 +265,12 @@ jobs:
 
       - name: Annotate rollback in workflow summary
         run: |
-          echo "## :warning: Production Rollback Triggered" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Smoke tests failed after deploying \`${{ github.event.workflow_run.head_sha }}\`." >> "$GITHUB_STEP_SUMMARY"
-          echo "Rolled back to previous image tag: \`${{ needs.deploy-prod.outputs.prev_image_tag }}\`." >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## :warning: Production Rollback Triggered"
+            echo ""
+            echo "Smoke tests failed after deploying \`${{ github.event.workflow_run.head_sha }}\`."
+            echo "Rolled back to previous image tag: \`${{ needs.deploy-prod.outputs.prev_image_tag }}\`."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ---------------------------------------------------------------------------
   # TEARDOWN QA — Shut down the QA slot after successful prod deployment

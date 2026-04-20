@@ -58,8 +58,8 @@ jobs:
       - name: Run shellcheck on standalone scripts
         # Catches issues in any .sh files committed to the repo.
         run: |
-          find . -name '*.sh' -not -path './.git/*' \
-            | xargs --no-run-if-empty shellcheck \
+          find . -name '*.sh' -not -path './.git/*' -print0 \
+            | xargs -0 --no-run-if-empty shellcheck \
             || (echo "PIPELINE LINT HARD BLOCK: shellcheck found errors in shell scripts" && exit 1)
 
   # ---------------------------------------------------------------------------
