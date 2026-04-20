@@ -80,8 +80,8 @@ jobs:
                   --password-stdin
 
               # Pull the exact images — same digests as dev, no rebuild
-              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-backend:'"$SHA"'
-              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-frontend:'"$SHA"'
+              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-backend:'"$SHA"
+              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-frontend:'"$SHA"
 
               # Ensure VPS has latest compose files from dev branch
               git -C ~/DevOps-Platform fetch origin && git -C ~/DevOps-Platform checkout -B dev origin/dev
