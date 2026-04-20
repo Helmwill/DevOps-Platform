@@ -115,9 +115,9 @@ jobs:
 
               docker compose up -d --pull never --remove-orphans
 
-              echo "=== Container status after deploy ==="
+              echo '=== Container status after deploy ==='
               docker compose ps
-              echo "=== Backend logs (last 20 lines) ==="
+              echo '=== Backend logs (last 20 lines) ==='
               docker compose logs --tail=20 dashboard-backend-dev
             "
 
