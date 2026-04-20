@@ -50,8 +50,16 @@ services:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik-public"
 
-      # ---- Backend: /api/* and /health (high priority) ----
-      - "traefik.http.routers.dashboard-qa-api.rule=Host(`qa.${DOMAIN}`) && (PathPrefix(`/api`) || Path(`/health`))"
+      # ---- Backend: /health (no auth — required for smoke test / uptime checks) ----
+      - "traefik.http.routers.dashboard-qa-health.rule=Host(`qa.${DOMAIN}`) && Path(`/health`)"
+      - "traefik.http.routers.dashboard-qa-health.entrypoints=websecure"
+      - "traefik.http.routers.dashboard-qa-health.tls=true"
+      - "traefik.http.routers.dashboard-qa-health.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.dashboard-qa-health.priority=20"
+      - "traefik.http.routers.dashboard-qa-health.service=dashboard-backend-qa"
+
+      # ---- Backend: /api/* (requires auth) ----
+      - "traefik.http.routers.dashboard-qa-api.rule=Host(`qa.${DOMAIN}`) && PathPrefix(`/api`)"
       - "traefik.http.routers.dashboard-qa-api.entrypoints=websecure"
       - "traefik.http.routers.dashboard-qa-api.tls=true"
       - "traefik.http.routers.dashboard-qa-api.tls.certresolver=letsencrypt"
