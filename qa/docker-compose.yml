@@ -76,11 +76,17 @@ services:
     security_opt:
       - no-new-privileges:true
     # nginx writes to cache, pid, and tmp at runtime — provide tmpfs for each
+    # /var/cache/nginx needs mode 01777 so the non-root nginx user can create
+    # temp subdirectories; the image chown is overwritten by the tmpfs mount.
     read_only: true
     tmpfs:
-      - /var/cache/nginx
       - /var/run
       - /tmp
+    volumes:
+      - type: tmpfs
+        target: /var/cache/nginx
+        tmpfs:
+          mode: 01777
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/"]
       interval: 30s
