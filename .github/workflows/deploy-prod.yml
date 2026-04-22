@@ -177,6 +177,8 @@ jobs:
     steps:
       - name: Checkout source (for smoke.sh)
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Wait for production service to come up
         run: |

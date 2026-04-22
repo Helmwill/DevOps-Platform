@@ -149,6 +149,8 @@ jobs:
     steps:
       - name: Checkout source (for ZAP rules file if present)
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Run OWASP ZAP baseline scan
         # Uses the official ZAP stable Docker image.
@@ -198,6 +200,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Set up Node.js 20 (LTS)
         uses: actions/setup-node@v4
@@ -241,6 +245,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Install k6
         # Install k6 from the official Grafana package repository
@@ -286,6 +292,7 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0    # Full history required for Gitleaks
 
       - name: Install Trivy
