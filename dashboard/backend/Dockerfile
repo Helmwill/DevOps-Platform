@@ -22,6 +22,9 @@ FROM node:20-alpine AS runtime
 
 WORKDIR /app
 
+# Upgrade npm to get patched versions of its bundled deps (tar, minimatch, etc.)
+RUN npm install -g npm@latest
+
 # Install production dependencies only
 COPY package*.json ./
 RUN npm ci --omit=dev

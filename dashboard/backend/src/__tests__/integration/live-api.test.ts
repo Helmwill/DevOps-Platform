@@ -25,11 +25,12 @@ describeLive('Live API Integration', () => {
   async function get(path: string): Promise<{ status: number; body: unknown }> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json', ...authHeader };
     const res = await fetch(`${BASE_URL}${path}`, { headers });
+    const text = await res.text();
     let body: unknown;
     try {
-      body = await res.json();
+      body = JSON.parse(text);
     } catch {
-      body = await res.text();
+      body = text;
     }
     return { status: res.status, body };
   }
@@ -64,7 +65,7 @@ describeLive('Live API Integration', () => {
       console.log('Skipping auth gate check — no DASHBOARD_CREDENTIALS provided');
       return;
     }
-    const res = await fetch(`${BASE_URL}/health`);
+    const res = await fetch(`${BASE_URL}/api/containers`);
     expect(res.status).toBe(401);
   }, 20_000);
 });
