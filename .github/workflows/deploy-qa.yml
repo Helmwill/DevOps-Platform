@@ -215,9 +215,36 @@ jobs:
         working-directory: dashboard/backend
         run: npm ci
 
+      - name: Verify credentials against live QA
+        # Diagnose auth before running jest so failures have a clear cause.
+        env:
+          DASHBOARD_CREDENTIALS: ${{ secrets.DASHBOARD_CREDENTIALS }}
+          QA_URL: "https://qa.${{ secrets.DOMAIN }}"
+        run: |
+          if [ -z "$DASHBOARD_CREDENTIALS" ]; then
+            echo "ERROR: DASHBOARD_CREDENTIALS secret is empty or not set in the 'qa' environment."
+            echo "Go to: GitHub repo → Settings → Environments → qa → Add secret DASHBOARD_CREDENTIALS = user:password"
+            exit 1
+          fi
+          echo "DASHBOARD_CREDENTIALS is set (username: $(echo "$DASHBOARD_CREDENTIALS" | cut -d: -f1))"
+          STATUS=$(curl --no-progress-meter \
+                        --output /dev/null \
+                        --write-out "%{http_code}" \
+                        --max-time 10 \
+                        --insecure \
+                        --user "$DASHBOARD_CREDENTIALS" \
+                        "$QA_URL/api/containers" 2>/dev/null || true)
+          echo "Auth probe → /api/containers returned HTTP $STATUS"
+          if [ "$STATUS" = "401" ]; then
+            echo "ERROR: credentials rejected by Traefik — DASHBOARD_CREDENTIALS does not match DASHBOARD_AUTH."
+            echo "Regenerate DASHBOARD_AUTH from the same password used in DASHBOARD_CREDENTIALS."
+            exit 1
+          fi
+          if [ "$STATUS" != "200" ]; then
+            echo "WARNING: unexpected HTTP $STATUS — continuing to jest anyway"
+          fi
+
       - name: Run integration tests against live QA
-        # TEST_BASE_URL  — points at the live QA slot
-        # DASHBOARD_CREDENTIALS — optional plain-text user:password for basic auth
         working-directory: dashboard/backend
         env:
           TEST_BASE_URL: "https://qa.${{ secrets.DOMAIN }}"
