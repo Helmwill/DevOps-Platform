@@ -116,6 +116,7 @@ jobs:
               export REGISTRY_URL='${{ secrets.REGISTRY_URL }}'
               export DOMAIN='${{ secrets.DOMAIN }}'
               export DASHBOARD_AUTH=\$(printf '%s' '${_AUTH_B64}' | base64 -d)
+              export DOCKER_GID=\$(getent group docker | cut -d: -f3)
 
               docker compose up -d --pull never --remove-orphans
 

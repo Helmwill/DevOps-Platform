@@ -152,6 +152,7 @@ jobs:
               export REGISTRY_URL='${{ secrets.REGISTRY_URL }}'
               export DOMAIN='${{ secrets.DOMAIN }}'
               export DASHBOARD_AUTH=\$(printf '%s' '${_AUTH_B64}' | base64 -d)
+              export DOCKER_GID=\$(getent group docker | cut -d: -f3)
 
               # Bring up the production stack
               # --pull never: image was already pulled above — do not re-pull
@@ -259,6 +260,7 @@ jobs:
               export REGISTRY_URL='${{ secrets.REGISTRY_URL }}'
               export DOMAIN='${{ secrets.DOMAIN }}'
               export DASHBOARD_AUTH=\$(printf '%s' '${_AUTH_B64}' | base64 -d)
+              export DOCKER_GID=\$(getent group docker | cut -d: -f3)
 
               # Re-deploy using the previous image — already present on the host
               docker compose up -d --pull never --remove-orphans
