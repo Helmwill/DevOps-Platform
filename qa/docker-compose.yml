@@ -68,6 +68,10 @@ services:
       - "traefik.http.routers.dashboard-qa-api.service=dashboard-backend-qa"
       - "traefik.http.services.dashboard-backend-qa.loadbalancer.server.port=3000"
 
+      # ---- Basic-auth middleware — defined on backend so it's available as soon
+      #      as the backend is healthy (integration tests run before frontend registers)
+      - "traefik.http.middlewares.dashboard-qa-auth.basicauth.users=${DASHBOARD_AUTH}"
+
   dashboard-frontend-qa:
     image: ${REGISTRY_URL}/dashboard-frontend:${IMAGE_TAG:-latest}
     container_name: dashboard-frontend-qa
@@ -114,5 +118,4 @@ services:
       - "traefik.http.routers.dashboard-qa.service=dashboard-frontend-qa"
       - "traefik.http.services.dashboard-frontend-qa.loadbalancer.server.port=8080"
 
-      # ---- Basic-auth middleware (shared by both routers) ----
-      - "traefik.http.middlewares.dashboard-qa-auth.basicauth.users=${DASHBOARD_AUTH}"
+      # ---- Basic-auth middleware — defined on backend (see backend labels) ----
