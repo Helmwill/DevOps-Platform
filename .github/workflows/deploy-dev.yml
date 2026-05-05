@@ -89,6 +89,10 @@ jobs:
 
       - name: Deploy to VPS dev slot via SSH
         run: |
+          # Base64-encode DASHBOARD_AUTH so its $ signs survive the double-quoted
+          # SSH command string (bash would otherwise expand $2y, $0, etc.)
+          _AUTH_B64=$(printf '%s' '${{ secrets.DASHBOARD_AUTH }}' | base64 -w 0)
+
           ssh -i /tmp/deploy_key \
               -o StrictHostKeyChecking=no \
               -o BatchMode=yes \
@@ -111,7 +115,7 @@ jobs:
               export IMAGE_TAG='${{ github.sha }}'
               export REGISTRY_URL='${{ secrets.REGISTRY_URL }}'
               export DOMAIN='${{ secrets.DOMAIN }}'
-              export DASHBOARD_AUTH='${{ secrets.DASHBOARD_AUTH }}'
+              export DASHBOARD_AUTH=\$(printf '%s' '${_AUTH_B64}' | base64 -d)
 
               docker compose up -d --pull never --remove-orphans
 
