@@ -335,8 +335,11 @@ jobs:
         # GitHub release assets are named gitleaks_<version>_linux_x64.tar.gz so we
         # fetch the latest tag first to build the correct URL.
         run: |
-          GITLEAKS_VERSION=$(curl -sSfL https://api.github.com/repos/gitleaks/gitleaks/releases/latest \
+          GITLEAKS_VERSION=$(curl -sSfL \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            https://api.github.com/repos/gitleaks/gitleaks/releases/latest \
             | grep '"tag_name"' | head -1 | cut -d'"' -f4)
+          [ -n "$GITLEAKS_VERSION" ] || { echo "ERROR: could not determine Gitleaks version"; exit 1; }
           curl -sSfL \
             "https://github.com/gitleaks/gitleaks/releases/download/${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION#v}_linux_x64.tar.gz" \
             | sudo tar -xz -C /usr/local/bin gitleaks
