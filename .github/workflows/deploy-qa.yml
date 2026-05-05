@@ -150,7 +150,7 @@ jobs:
       - name: Checkout source (for ZAP rules file if present)
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha }}  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
 
       - name: Run OWASP ZAP baseline scan
         # Uses the official ZAP stable Docker image.
@@ -196,12 +196,13 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     needs: deploy-qa
+    environment: qa
 
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha }}  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
 
       - name: Set up Node.js 20 (LTS)
         uses: actions/setup-node@v4
@@ -246,7 +247,7 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha }}  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
 
       - name: Install k6
         # Install k6 from the official Grafana package repository
@@ -292,7 +293,7 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha }}  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
           fetch-depth: 0    # Full history required for Gitleaks
 
       - name: Install Trivy
@@ -330,10 +331,17 @@ jobs:
             || (echo "SECURITY GATE HARD BLOCK: Trivy found HIGH/CRITICAL CVEs in frontend — see trivy-frontend-results.txt" && exit 1)
 
       - name: Install Gitleaks
-        # Install the latest stable Gitleaks release
+        # Install the latest stable Gitleaks release.
+        # GitHub release assets are named gitleaks_<version>_linux_x64.tar.gz so we
+        # fetch the latest tag first to build the correct URL.
         run: |
+          GITLEAKS_VERSION=$(curl -sSfL \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            https://api.github.com/repos/gitleaks/gitleaks/releases/latest \
+            | grep '"tag_name"' | head -1 | cut -d'"' -f4)
+          [ -n "$GITLEAKS_VERSION" ] || { echo "ERROR: could not determine Gitleaks version"; exit 1; }
           curl -sSfL \
-            https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_linux_x64.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION#v}_linux_x64.tar.gz" \
             | sudo tar -xz -C /usr/local/bin gitleaks
           gitleaks version
 

@@ -178,7 +178,7 @@ jobs:
       - name: Checkout source (for smoke.sh)
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha }}  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
 
       - name: Wait for production service to come up
         run: |
