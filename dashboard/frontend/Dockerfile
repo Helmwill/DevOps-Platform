@@ -22,6 +22,9 @@ RUN npm run build
 # --- Runtime stage ---
 FROM nginx:alpine AS runtime
 
+# Upgrade Alpine packages to pick up any patched versions of OS-level CVEs
+RUN apk upgrade --no-cache
+
 # Remove default nginx config and replace with SPA config
 RUN rm /etc/nginx/conf.d/default.conf
 COPY nginx.conf /etc/nginx/conf.d/default.conf
