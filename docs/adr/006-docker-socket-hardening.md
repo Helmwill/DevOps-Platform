@@ -55,9 +55,29 @@ security_opt:
 
 ---
 
+### 4. Docker socket GID passthrough
+
+The `node` user (UID 1000) is not a member of the `docker` group inside the container. Without additional configuration the socket is inaccessible even with a `:ro` mount. The GID of the socket on the host is injected at deploy time and passed to `group_add`:
+
+```yaml
+group_add:
+  - "${DOCKER_GID}"
+```
+
+In each deployment workflow the GID is captured on the VPS before `docker compose up`:
+
+```bash
+export DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)
+```
+
+`stat -c '%g'` is used instead of `getent group docker` because the group name may differ across distributions; reading the GID directly from the socket file is reliable.
+
+---
+
 ## Consequences
 
 - **Positive:** Significantly reduces the attack surface if the dashboard API is compromised.
 - **Positive:** Trivy IaC scan passes with no HIGH/CRITICAL findings related to socket or privilege escalation.
-- **Trade-off:** If a future feature requires write access to the Docker socket (e.g. container start/stop), the socket mount must be changed from `:ro` to `:rw` and the change reviewed as a security decision.
+- **Trade-off:** If a future feature requires write access to the Docker socket (e.g. container start/stop initiated from the dashboard), the socket mount must be changed from `:ro` to `:rw` and the change reviewed as a security decision.
 - **Trade-off:** `read_only: true` may break libraries that write to the filesystem at runtime. Any such library must be configured to write to `/tmp` instead.
+- **Trade-off:** `DOCKER_GID` must be exported before `docker compose up` in every deployment workflow. If the GID changes on the host (e.g. Docker reinstall), the compose stack must be restarted with the updated value.

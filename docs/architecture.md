@@ -107,9 +107,9 @@ graph TD
 
 | Environment | Trigger | Lifecycle | Approval Gate |
 |---|---|---|---|
-| dev | Push to feature branch | Ephemeral — torn down after branch merge | None |
-| qa | PR opened against main | Ephemeral — torn down after merge to main | None |
-| prod | Merge to main | Persistent | Manual approval by Helmwill |
+| dev | Push to `dev` branch | Persistent slot — containers redeployed on every push | None |
+| qa | `workflow_run` after deploy-dev succeeds | Ephemeral — torn down by teardown-qa after prod smoke tests pass | None |
+| prod | `workflow_run` after deploy-qa succeeds | Persistent | Manual approval by Helmwill |
 
 **Deployment model:** Build once in dev (image tagged with Git SHA / OCI digest). Promote the same immutable image digest to QA, then to prod. No rebuild at promotion.
 
@@ -144,17 +144,26 @@ Browser
 ### 6.2 CI/CD Push Flow
 
 ```
-Developer git push (from Codespace or local)
-  → GitHub webhook → GitHub Actions Runner (ubuntu-latest)
-  → T1: npm test (unit + integration)
-  → T2: semgrep scan (source + IaC)
-  → T3: trivy config (Dockerfiles + Compose)
-  → docker build → tag with SHA → push to ghcr.io (or REGISTRY_URL)
-  → deploy to QA slot via SSH (docker compose up)
-  → T4: zap-baseline.py against QA URL + k6 run
-  → T5: trivy image (published digest) + gitleaks detect
-  → [AWAITING_HUMAN_APPROVAL — Helmwill in GitHub environment gate]
-  → deploy to prod (same image digest, compose up)
+Developer git push to `dev` branch (from Codespace or local)
+  → GitHub webhook → deploy-dev.yml (GitHub-hosted runner, ubuntu-latest)
+  → docker build backend + frontend → tag with full git SHA → push to registry
+  → deploy to dev slot via SSH (docker compose up in ~/DevOps-Platform/dev/)
+  → smoke test: GET /health on dev subdomain
+
+  → deploy-qa.yml triggered via workflow_run after deploy-dev succeeds
+  → T1: npm ci + jest integration tests against live QA environment
+  → T2: Semgrep SAST (CRITICAL/HIGH = hard block) — runs in pr-gate.yml on PRs
+  → T3: Trivy IaC scan on Dockerfiles + Compose files — runs in pr-gate.yml on PRs
+  → pull same image SHA to QA slot via SSH (docker compose up in ~/DevOps-Platform/qa/)
+  → T4: ZAP baseline scan against QA subdomain + k6 p99 < 500ms load test
+  → T5: trivy image (published digest) + gitleaks detect on full git history
+
+  → deploy-prod.yml triggered via workflow_run after deploy-qa succeeds
+  → [AWAITING_HUMAN_APPROVAL — Helmwill approves in GitHub environment gate]
+  → pull same image SHA to prod slot via SSH (docker compose up in ~/DevOps-Platform/prod/)
+  → smoke test suite (scripts/smoke.sh) against prod subdomain
+  → auto-rollback to previous image if smoke test fails
+  → teardown-qa: docker compose down in ~/DevOps-Platform/qa/
 ```
 
 ### 6.3 Secret Handling
@@ -182,7 +191,9 @@ All responses are `application/json`. Container control endpoints return `{ "ok"
 
 ### 7.2 Docker Socket Access
 
-The backend communicates with the Docker daemon via the Unix socket at `/var/run/docker.sock` using the official Docker Engine API (v1.43+). The socket is mounted read+write into the dashboard backend container only. No other application container has socket access.
+The backend communicates with the Docker daemon via the Unix socket at `/var/run/docker.sock` using the official Docker Engine API (v1.43+). The socket is mounted **read-only** (`:ro`) into the dashboard backend container only — the dashboard reads container state and does not issue write commands to the daemon. No other application container has socket access.
+
+The container runs as the non-root `node` user (UID 1000). To allow socket access without root, the host Docker GID is passed to `group_add` at deploy time (see ADR-006).
 
 ### 7.3 Traefik Dynamic Configuration
 
