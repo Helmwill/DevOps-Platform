@@ -95,18 +95,19 @@ Stands up the core networking and service infrastructure. All other epics depend
 
 ---
 
-### Story 1.4 — Environment Routing (dev / QA / prod Compose profiles)
+### Story 1.4 — Environment Routing (dev / QA / prod separate Compose projects)
 
 - **Points:** 3
 - **Acceptance:**
-  - Compose profiles (`dev`, `qa`, `prod`) defined; each profile maps to a distinct Traefik router rule (e.g. `dev.domain.com`, `qa.domain.com`, `dashboard.domain.com`).
-  - `dev` profile redeploys on image push without requiring a full stack restart.
-  - `qa` profile can be spun up and torn down idempotently via `docker compose --profile qa up -d` / `down`.
-  - `prod` profile requires the `execute_command` human gate before first deploy.
+  - Separate Compose project directories (`dev/`, `qa/`, `prod/`) exist at the repo root; each maps to a distinct Traefik router rule (`dev.domain.com`, `qa.domain.com`, `dashboard.domain.com`).
+  - `dev/` stack redeploys on image push without requiring a full stack restart.
+  - `qa/` stack can be spun up and torn down idempotently via `docker compose up -d` / `down`.
+  - `prod/` stack requires Helmwill approval (GitHub environment gate) before deploy.
   - All three routes respond with valid TLS on their respective subdomains.
 - **Assigned agent:** Infra
 - **Depends on:** 1.3
 - **Parallel safe:** no
+- **Implementation note:** Separate project directories were used instead of Compose profiles, providing stronger isolation (independent container names, networks per slot) and simpler teardown.
 
 ---
 

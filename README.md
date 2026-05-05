@@ -17,17 +17,27 @@ No cloud IaC required. Source control and CI/CD pipelines run on GitHub.
 Internet
    |
    v
-Traefik (ports 80/443)          infra/traefik/
-   |  Reverse proxy, TLS termination, HTTP->HTTPS redirect
-   |  Subdomains: traefik.<DOMAIN>
+Traefik (ports 80/443)              infra/traefik/
+   |  Reverse proxy, TLS termination, HTTP→HTTPS redirect
+   |  Subdomain: traefik.<DOMAIN>
    |
-   +-> Dashboard                infra/dashboard/
-          Custom web dashboard (read-only Docker socket)
-          Subdomains: dashboard.<DOMAIN>
+   +-> Dashboard (prod)             prod/docker-compose.yml
+   |      backend (Node.js) + frontend (nginx)
+   |      Subdomain: dashboard.<DOMAIN>
+   |      Deployed via deploy-prod.yml after Helmwill approval
+   |
+   +-> Dashboard (qa)               qa/docker-compose.yml
+   |      Ephemeral slot — spun up for the QA gauntlet, torn down after prod
+   |      Subdomain: qa.<DOMAIN>
+   |
+   +-> Dashboard (dev)              dev/docker-compose.yml
+          Persistent redeploy slot — updated on every push to `dev` branch
+          Subdomain: dev.<DOMAIN>
 
 All services communicate over the shared `traefik-public` Docker bridge network.
-CI/CD pipelines run on GitHub Actions (GitHub-hosted runners); deployments are
-pushed to the VPS via SSH using secrets stored in GitHub repository settings.
+
+CI/CD pipeline: push to `dev` → build images → deploy-dev → deploy-qa (gauntlet) →
+                deploy-prod (manual gate: Helmwill) → teardown-qa
 ```
 
 ---
@@ -66,32 +76,33 @@ network traefik-public declared as external, but could not be found
 ```
 ---
 
-##  
-Quick Start
+## Quick Start
 
-1. **Prerequisites** -- see [infra/README.md](infra/README.md#prerequisites) for the
+1. **Prerequisites** — see [infra/README.md](infra/README.md#prerequisites) for the
    full list (Docker >= 24, domain name, DNS A records, open ports 80/443).
 
-2. **Create the shared network:**
+2. **Create the shared network (once, on the VPS):**
 
-   ```bash   
+   ```bash
    docker network create traefik-public
    ```
 
-3. **Prepare your secrets** -- copy or create a `.env` file in each stack directory.
-   Never commit secrets. See [infra/README.md](infra/README.md#environment-variables--secrets)
-   for the full variable reference.
-
-
-4. **Deploy in order:**
+3. **Deploy Traefik (once, on the VPS):**
 
    ```bash
-   # 1. Traefik first -- it must be up before any other stack
    cd infra/traefik && docker compose up -d
-
-   # 2. Dashboard
-   cd infra/dashboard && docker compose up -d
    ```
+
+4. **Configure GitHub secrets** in repository/environment settings — see
+   [infra/README.md](infra/README.md#environment-variables--secrets) for the full variable list.
+   Environments required: `dev`, `qa`, `production`.
+
+5. **Push to `dev`** — the CI/CD pipeline handles everything from here:
+   - Builds backend + frontend Docker images (tagged with git SHA)
+   - Deploys to `dev` slot → runs QA gauntlet → awaits Helmwill approval → deploys to `prod`
+
+> **Note:** The `dev/`, `qa/`, and `prod/` directories contain the Docker Compose files for each
+> environment slot. They are deployed by the GitHub Actions workflows, not manually.
 
 For complete deployment instructions, troubleshooting, and TLS notes see
 **[infra/README.md](infra/README.md)**.

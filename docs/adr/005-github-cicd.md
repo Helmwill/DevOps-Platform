@@ -42,9 +42,9 @@ other OCI-compatible registry the operator chooses.
 
 | Event | Workflow triggered | Environment | Lifecycle |
 |---|---|---|---|
-| Push to `develop` | `deploy-dev.yml` | dev | Deploy; active until next push |
-| After deploy-dev succeeds | `deploy-qa.yml` | qa | Ephemeral; torn down after prod |
-| After deploy-qa succeeds | `deploy-prod.yml` | prod | Persistent; manual approval gate |
+| Push to `dev` | `deploy-dev.yml` | dev | Persistent slot; redeployed on each push |
+| After deploy-dev succeeds (`workflow_run`) | `deploy-qa.yml` | qa | Ephemeral; torn down by teardown-qa after prod smoke tests pass |
+| After deploy-qa succeeds (`workflow_run`) | `deploy-prod.yml` | prod | Persistent; manual approval gate (Helmwill) |
 
 **Manual approval gate (Helmwill):** The `deploy-prod.yml` workflow targets the
 `production` GitHub environment. GitHub halts the job at the `approval-gate` step

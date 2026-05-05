@@ -25,11 +25,24 @@ Application workloads (Traefik, dashboard) run on the VPS.
 ```
 infra/
 ├── traefik/
-│   └── docker-compose.yml   # Reverse proxy + TLS termination
+│   └── docker-compose.yml   # Reverse proxy + TLS termination (deploy once, persistent)
 ├── dashboard/
-│   └── docker-compose.yml   # Custom web dashboard (placeholder image)
+│   └── docker-compose.yml   # Legacy placeholder — superseded by the env-specific stacks below
 └── README.md                # This file
+
+dev/
+└── docker-compose.yml       # Dev slot — redeployed on every push to `dev` branch
+
+qa/
+└── docker-compose.yml       # QA slot — ephemeral, spun up for the gauntlet, torn down after prod
+
+prod/
+└── docker-compose.yml       # Production slot — persistent, updated after Helmwill approves
 ```
+
+The `dev/`, `qa/`, and `prod/` stacks are deployed exclusively by GitHub Actions workflows.
+Never run `docker compose up` in those directories manually in production — the workflows
+inject required environment variables (`IMAGE_TAG`, `DOCKER_GID`, `DASHBOARD_AUTH`, etc.).
 
 ---
 
@@ -64,14 +77,21 @@ GitHub repository/environment settings — not in `.env` files on the VPS.
 |---|---|---|
 | `TRAEFIK_DASHBOARD_AUTH` | htpasswd string for dashboard basic-auth | `htpasswd -nb admin <password>` |
 
-### Dashboard stack
+### Dashboard stack (dev / qa / prod)
 
 | Variable | Description | Notes |
 |---|---|---|
 | `REGISTRY_URL` | Container registry hostname | e.g. `ghcr.io/your-org` |
-| `IMAGE_TAG` | Dashboard image tag to deploy | e.g. `latest` or a SHA |
-| `DASHBOARD_AUTH` | htpasswd string for dashboard basic-auth | `htpasswd -nb admin <password>` |
-| `DASHBOARD_PORT` | Internal port the dashboard app listens on | Default: `3000` |
+| `IMAGE_TAG` | Dashboard image tag to deploy | Full git SHA — injected by workflow |
+| `DASHBOARD_AUTH` | htpasswd string for Traefik basic-auth | `htpasswd -nb admin <password>` — stored as a GitHub secret |
+| `DOCKER_GID` | GID of `/var/run/docker.sock` on the VPS host | Injected by workflow via `stat -c '%g' /var/run/docker.sock` |
+
+> **CI/CD note:** `DASHBOARD_AUTH` typically contains `$` signs (bcrypt or SHA1 hash).
+> The deployment workflows base64-encode the value on the runner before embedding it in an
+> SSH command string, then decode it on the VPS. This prevents bash from expanding `$2y`,
+> `$0`, etc. inside double-quoted strings.
+> Use SHA1 format (`htpasswd -nbs admin <password>`) to avoid this entirely — SHA1 hashes
+> contain no `$` signs.
 
 ### Sample `.env` file (DO NOT commit this file)
 
@@ -162,6 +182,9 @@ docker compose up -d --remove-orphans
 |---|---|---|
 | Certificate not issued | Port 80 blocked by firewall | Open port 80 on the VPS firewall |
 | `traefik-public` network not found | Network not created before compose up | `docker network create traefik-public` |
-| Dashboard returns 401 | Malformed `DASHBOARD_AUTH` | Re-run `htpasswd -nb` and double all `$` signs in `.env` |
+| Dashboard returns 401 (manual deploy) | Malformed `DASHBOARD_AUTH` in `.env` | Re-run `htpasswd -nb` and double all `$` signs in `.env` (`$` → `$$`) |
+| Dashboard returns 401 (CI/CD deploy) | `DASHBOARD_AUTH` hash corrupted by bash expansion in SSH command | Bcrypt hashes contain `$2y$`, `$0` etc. which bash expands inside double-quoted strings. Workflows base64-encode the secret before SSH and decode on the VPS. Alternatively use SHA1 format: `htpasswd -nbs admin <password>` |
+| `/api/*` returns 404 | `dashboard-qa-auth` middleware not yet registered | Ensure the basicauth middleware label is on the backend container, not the frontend — backend registers with Traefik first |
+| `/api/*` returns 503 | Backend container can't access Docker socket | Check `DOCKER_GID` is set correctly: `stat -c '%g' /var/run/docker.sock` on the VPS |
 | DNS not resolving | A records not propagated | Wait for TTL or check DNS with `dig dashboard.<DOMAIN>` |
 | GitHub Actions deploy fails | SSH key or VPS secrets misconfigured | Verify `VPS_SSH_KEY`, `VPS_USER`, `VPS_HOST` secrets in GitHub Settings |
