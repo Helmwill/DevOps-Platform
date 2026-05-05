@@ -120,6 +120,10 @@ jobs:
         # Pulls the EXACT same image digest that passed all QA gates.
         # No code changes, no rebuild — pure image promotion.
         run: |
+          # Base64-encode DASHBOARD_AUTH so its $ signs survive the double-quoted
+          # SSH command string (bash would otherwise expand $2y, $0, etc.)
+          _AUTH_B64=$(printf '%s' '${{ secrets.DASHBOARD_AUTH }}' | base64 -w 0)
+
           ssh -i /tmp/deploy_key \
               -o StrictHostKeyChecking=no \
               -o BatchMode=yes \
@@ -147,7 +151,8 @@ jobs:
               export IMAGE_TAG='${{ github.event.workflow_run.head_sha }}'
               export REGISTRY_URL='${{ secrets.REGISTRY_URL }}'
               export DOMAIN='${{ secrets.DOMAIN }}'
-              export DASHBOARD_AUTH='${{ secrets.DASHBOARD_AUTH }}'
+              export DASHBOARD_AUTH=\$(printf '%s' '${_AUTH_B64}' | base64 -d)
+              export DOCKER_GID=\$(stat -c '%g' /var/run/docker.sock)
 
               # Bring up the production stack
               # --pull never: image was already pulled above — do not re-pull
@@ -240,6 +245,7 @@ jobs:
         run: |
           PREV_TAG="${{ needs.deploy-prod.outputs.prev_image_tag }}"
           echo "Rolling back to image tag: $PREV_TAG"
+          _AUTH_B64=$(printf '%s' '${{ secrets.DASHBOARD_AUTH }}' | base64 -w 0)
 
           ssh -i /tmp/deploy_key \
               -o StrictHostKeyChecking=no \
@@ -253,7 +259,8 @@ jobs:
               export IMAGE_TAG='${{ needs.deploy-prod.outputs.prev_image_tag }}'
               export REGISTRY_URL='${{ secrets.REGISTRY_URL }}'
               export DOMAIN='${{ secrets.DOMAIN }}'
-              export DASHBOARD_AUTH='${{ secrets.DASHBOARD_AUTH }}'
+              export DASHBOARD_AUTH=\$(printf '%s' '${_AUTH_B64}' | base64 -d)
+              export DOCKER_GID=\$(stat -c '%g' /var/run/docker.sock)
 
               # Re-deploy using the previous image — already present on the host
               docker compose up -d --pull never --remove-orphans

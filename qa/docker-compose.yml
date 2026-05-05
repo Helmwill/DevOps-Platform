@@ -33,6 +33,9 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    # Add the host docker GID so the non-root node user can access the socket
+    group_add:
+      - "${DOCKER_GID}"
     volumes:
       # Docker socket mounted read-only — backend only reads container state
       - /var/run/docker.sock:/var/run/docker.sock:ro
