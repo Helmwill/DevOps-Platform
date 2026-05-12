@@ -29,8 +29,10 @@ on:
       - "Deploy QA"
     types:
       - completed
-    branches:
-      - dev
+    # No branches filter here — deploy-qa runs from the default branch (main) via
+    # workflow_run, so its head_branch is 'main', not 'dev'. Filtering by branch
+    # would prevent this workflow from ever triggering. The guard job below is
+    # sufficient: it only proceeds if deploy-qa concluded with 'success'.
 
 # Serialise production deployments — never run two at once
 concurrency:
