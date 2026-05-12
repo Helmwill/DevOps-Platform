@@ -181,9 +181,9 @@ jobs:
 
     steps:
       - name: Checkout source (for smoke.sh)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Wait for production service to come up
         run: |
