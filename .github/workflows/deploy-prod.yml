@@ -180,8 +180,8 @@ jobs:
     needs: deploy-prod
 
     steps:
-      - name: Checkout source (for smoke.sh)
-        uses: actions/checkout@v4  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
+      - name: Checkout source (for smoke.sh)  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 

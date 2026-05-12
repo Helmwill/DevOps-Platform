@@ -152,8 +152,8 @@ jobs:
     needs: deploy-qa
 
     steps:
-      - name: Checkout source (for ZAP rules file if present)
-        uses: actions/checkout@v4  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
+      - name: Checkout source (for ZAP rules file if present)  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
@@ -204,8 +204,8 @@ jobs:
     environment: qa
 
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
+      - name: Checkout source  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
@@ -276,8 +276,8 @@ jobs:
     needs: deploy-qa
 
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
+      - name: Checkout source  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
@@ -322,8 +322,8 @@ jobs:
     needs: deploy-qa
 
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
+      - name: Checkout source  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0    # Full history required for Gitleaks
