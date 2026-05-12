@@ -27,7 +27,7 @@ on:
 # Only one QA pipeline at a time
 concurrency:
   group: deploy-qa
-  cancel-in-progress: false   # Do not cancel in-progress QA runs — let them finish
+  cancel-in-progress: true   # Cancel queued/running QA when a newer deploy-dev completes
 
 jobs:
 

@@ -24,7 +24,7 @@ Traefik (ports 80/443)              infra/traefik/
    +-> Dashboard (prod)             prod/docker-compose.yml
    |      backend (Node.js) + frontend (nginx)
    |      Subdomain: dashboard.<DOMAIN>
-   |      Deployed via deploy-prod.yml after Helmwill approval
+   |      Deployed via deploy-prod.yml automatically after QA passes
    |
    +-> Dashboard (qa)               qa/docker-compose.yml
    |      Ephemeral slot — spun up for the QA gauntlet, torn down after prod
@@ -99,7 +99,7 @@ network traefik-public declared as external, but could not be found
 
 5. **Push to `dev`** — the CI/CD pipeline handles everything from here:
    - Builds backend + frontend Docker images (tagged with git SHA)
-   - Deploys to `dev` slot → runs QA gauntlet → awaits Helmwill approval → deploys to `prod`
+   - Deploys to `dev` slot → runs QA gauntlet → deploys to `prod` automatically
 
 > **Note:** The `dev/`, `qa/`, and `prod/` directories contain the Docker Compose files for each
 > environment slot. They are deployed by the GitHub Actions workflows, not manually.
@@ -115,4 +115,4 @@ For complete deployment instructions, troubleshooting, and TLS notes see
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | Detailed architecture decisions and component interactions |
 | [docs/sprint-plan.md](docs/sprint-plan.md) | Sprint plan and story breakdown |
-| [infra/README.md](infra/README.md) | Full deployment guide, environment variables, troubleshooting |
+| [infra/README.md](infra/README.md) | Full deployment guide, environment variables, troubleshooting |giut comm
