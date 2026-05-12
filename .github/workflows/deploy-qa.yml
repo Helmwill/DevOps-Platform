@@ -44,6 +44,56 @@ jobs:
         run: echo "Deploy Dev succeeded — proceeding with QA pipeline"
 
   # ---------------------------------------------------------------------------
+  # CHECK IMAGES — Resolve the CURRENT HEAD of dev and verify images exist.
+  #
+  # workflow_run events can fire out of order — the triggering SHA may be a
+  # stale commit, a merge commit, or simply behind the current dev HEAD.
+  # This job resolves the actual current dev HEAD via the GitHub API and
+  # checks that images exist for it. All downstream jobs use the output SHA,
+  # so QA and prod always operate on the most recent dev commit regardless
+  # of which workflow_run event fired the trigger.
+  #
+  # If images don't exist yet (deploy-dev still building or failed), the job
+  # fails fast — all downstream jobs skip and deploy-prod is not triggered.
+  # ---------------------------------------------------------------------------
+  check-images:
+    name: Resolve dev HEAD & Verify Images
+    runs-on: ubuntu-latest
+    needs: guard
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+
+    steps:
+      - name: Resolve current dev HEAD SHA
+        id: resolve
+        run: |
+          SHA=$(curl -sf \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            "https://api.github.com/repos/${{ github.repository }}/git/ref/heads/dev" \
+            | jq -r '.object.sha')
+          [ -n "$SHA" ] || { echo "ERROR: could not resolve dev HEAD SHA"; exit 1; }
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "dev HEAD: ${SHA}"
+          echo "workflow_run SHA: ${{ github.event.workflow_run.head_sha }}"
+
+      - name: Log in to registry
+        run: |
+          echo "${{ secrets.REGISTRY_PASSWORD }}" | \
+            docker login "${{ secrets.REGISTRY_URL }}" \
+              --username "${{ secrets.REGISTRY_USER }}" \
+              --password-stdin
+
+      - name: Verify images exist for dev HEAD
+        run: |
+          SHA="${{ steps.resolve.outputs.sha }}"
+          if ! docker manifest inspect "${{ secrets.REGISTRY_URL }}/dashboard-backend:${SHA}" > /dev/null 2>&1; then
+            echo "No images for dev HEAD ${SHA} — deploy-dev may still be building or failed."
+            echo "This run will be skipped. The next deploy-dev completion will retry."
+            exit 1
+          fi
+          echo "Images confirmed for ${SHA} — proceeding."
+
+  # ---------------------------------------------------------------------------
   # DEPLOY QA — Pull the same image digest to the VPS QA slot
   # Uses the commit SHA from the triggering workflow_run event to identify
   # the exact image that was built and verified in the dev pipeline.
@@ -51,7 +101,7 @@ jobs:
   deploy-qa:
     name: Deploy to QA Slot
     runs-on: ubuntu-latest
-    needs: guard
+    needs: check-images
     environment: qa
 
     steps:
@@ -82,8 +132,8 @@ jobs:
                   --password-stdin
 
               # Pull the exact images — same digests as dev, no rebuild
-              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-backend:${{ github.event.workflow_run.head_sha }}'
-              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-frontend:${{ github.event.workflow_run.head_sha }}'
+              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-backend:${{ needs.check-images.outputs.sha }}'
+              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-frontend:${{ needs.check-images.outputs.sha }}'
 
               # Ensure VPS has latest compose files from dev branch
               git -C ~/DevOps-Platform fetch origin && git -C ~/DevOps-Platform checkout -B dev origin/dev
@@ -92,7 +142,7 @@ jobs:
               cd ~/DevOps-Platform/qa
 
               # Inject runtime configuration
-              export IMAGE_TAG='${{ github.event.workflow_run.head_sha }}'
+              export IMAGE_TAG='${{ needs.check-images.outputs.sha }}'
               export REGISTRY_URL='${{ secrets.REGISTRY_URL }}'
               export DOMAIN='${{ secrets.DOMAIN }}'
               export DASHBOARD_AUTH=\$(printf '%s' '${_AUTH_B64}' | base64 -d)
@@ -149,13 +199,13 @@ jobs:
   dast:
     name: DAST (OWASP ZAP Baseline)
     runs-on: ubuntu-latest
-    needs: deploy-qa
+    needs: [deploy-qa, check-images]
 
     steps:
       - name: Checkout source (for ZAP rules file if present)  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ needs.check-images.outputs.sha }}
 
       - name: Run OWASP ZAP baseline scan
         # Uses the official ZAP stable Docker image.
@@ -200,14 +250,14 @@ jobs:
   integration-test:
     name: Integration Tests
     runs-on: ubuntu-latest
-    needs: deploy-qa
+    needs: [deploy-qa, check-images]
     environment: qa
 
     steps:
       - name: Checkout source  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ needs.check-images.outputs.sha }}
 
       - name: Set up Node.js 20 (LTS)
         uses: actions/setup-node@v4
@@ -273,13 +323,13 @@ jobs:
   performance-test:
     name: Performance Test (k6 p99 < 500ms)
     runs-on: ubuntu-latest
-    needs: deploy-qa
+    needs: [deploy-qa, check-images]
 
     steps:
       - name: Checkout source  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ needs.check-images.outputs.sha }}
 
       - name: Install k6
         # Install k6 from the official Grafana package repository
@@ -319,13 +369,13 @@ jobs:
   security-gate:
     name: Security Gate (Trivy CVE + Gitleaks)
     runs-on: ubuntu-latest
-    needs: deploy-qa
+    needs: [deploy-qa, check-images]
 
     steps:
       - name: Checkout source  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ needs.check-images.outputs.sha }}
           fetch-depth: 0    # Full history required for Gitleaks
 
       - name: Install Trivy
@@ -351,7 +401,7 @@ jobs:
             --ignore-unfixed \
             --format table \
             --output trivy-backend-results.txt \
-            "${{ secrets.REGISTRY_URL }}/dashboard-backend:${{ github.event.workflow_run.head_sha }}" \
+            "${{ secrets.REGISTRY_URL }}/dashboard-backend:${{ needs.check-images.outputs.sha }}" \
             || (echo "SECURITY GATE HARD BLOCK: Trivy found HIGH/CRITICAL CVEs in backend — see trivy-backend-results.txt" && exit 1)
           trivy image \
             --severity HIGH,CRITICAL \
@@ -359,7 +409,7 @@ jobs:
             --ignore-unfixed \
             --format table \
             --output trivy-frontend-results.txt \
-            "${{ secrets.REGISTRY_URL }}/dashboard-frontend:${{ github.event.workflow_run.head_sha }}" \
+            "${{ secrets.REGISTRY_URL }}/dashboard-frontend:${{ needs.check-images.outputs.sha }}" \
             || (echo "SECURITY GATE HARD BLOCK: Trivy found HIGH/CRITICAL CVEs in frontend — see trivy-frontend-results.txt" && exit 1)
 
       - name: Install Gitleaks
