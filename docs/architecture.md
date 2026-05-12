@@ -109,7 +109,7 @@ graph TD
 |---|---|---|---|
 | dev | Push to `dev` branch | Persistent slot — containers redeployed on every push | None |
 | qa | `workflow_run` after deploy-dev succeeds | Ephemeral — torn down by teardown-qa after prod smoke tests pass | None |
-| prod | `workflow_run` after deploy-qa succeeds | Persistent | Manual approval by Helmwill |
+| prod | `workflow_run` after deploy-qa succeeds | Persistent | None — deploys automatically |
 
 **Deployment model:** Build once in dev (image tagged with Git SHA / OCI digest). Promote the same immutable image digest to QA, then to prod. No rebuild at promotion.
 
@@ -159,7 +159,6 @@ Developer git push to `dev` branch (from Codespace or local)
   → T5: trivy image (published digest) + gitleaks detect on full git history
 
   → deploy-prod.yml triggered via workflow_run after deploy-qa succeeds
-  → [AWAITING_HUMAN_APPROVAL — Helmwill approves in GitHub environment gate]
   → pull same image SHA to prod slot via SSH (docker compose up in ~/DevOps-Platform/prod/)
   → smoke test suite (scripts/smoke.sh) against prod subdomain
   → auto-rollback to previous image if smoke test fails

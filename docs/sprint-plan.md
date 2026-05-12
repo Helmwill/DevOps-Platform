@@ -102,7 +102,7 @@ Stands up the core networking and service infrastructure. All other epics depend
   - Separate Compose project directories (`dev/`, `qa/`, `prod/`) exist at the repo root; each maps to a distinct Traefik router rule (`dev.domain.com`, `qa.domain.com`, `dashboard.domain.com`).
   - `dev/` stack redeploys on image push without requiring a full stack restart.
   - `qa/` stack can be spun up and torn down idempotently via `docker compose up -d` / `down`.
-  - `prod/` stack requires Helmwill approval (GitHub environment gate) before deploy.
+  - `prod/` stack deploys automatically after QA passes — no manual approval gate.
   - All three routes respond with valid TLS on their respective subdomains.
 - **Assigned agent:** Infra
 - **Depends on:** 1.3
@@ -356,7 +356,7 @@ Wires up all five gauntlet stages in GitHub Actions for the dashboard repository
   - T5 job runs `gitleaks detect` on the full git history; any secret detected = hard block.
   - T5 also runs a final `trivy image` CVE scan on the images tagged for promotion.
   - If all gates pass, the workflow tags the image with the git SHA digest and pushes to the container registry (`ghcr.io` or `REGISTRY_URL`).
-  - Promotion to prod is blocked until the `prod_deployment_approval` human gate is acknowledged by Helmwill.
+  - Promotion to prod deploys automatically once all T5 gates pass.
   - Workflow status badge embedded in the repository README.
 - **Assigned agent:** CI/CD Builder
 - **Depends on:** 5.4
@@ -469,7 +469,7 @@ Health checks, smoke tests, and pipeline status visibility ensure the platform i
 - **Sprint 5** runs Stories 2.3 and 2.4 in parallel; Story 2.4 (stats) only requires the Docker socket client from 2.1, not 2.3.
 - **Sprint 7** — Story 3.4 (Traefik routing) depends on 3.3 completing in Sprint 6, and on 1.4 completing in Sprint 2. It is therefore unblocked by end of Sprint 6. Story 6.1 (health checks) depends on 3.4, so it follows 3.4 within the sprint.
 - **Sprint 10** is a solo sprint for Story 5.4 due to its complexity (8 points) and the integration work of spinning up a live QA environment for DAST.
-- **Sprint 11** contains the final pipeline gate and smoke test suite; Helmwill's `prod_deployment_approval` gate is the last manual step before prod traffic is live.
+- **Sprint 11** contains the final pipeline gate and smoke test suite; prod deploys automatically once all gates pass.
 
 ---
 
