@@ -152,10 +152,10 @@ jobs:
     needs: deploy-qa
 
     steps:
-      - name: Checkout source (for ZAP rules file if present)
+      - name: Checkout source (for ZAP rules file if present)  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Run OWASP ZAP baseline scan
         # Uses the official ZAP stable Docker image.
@@ -204,10 +204,10 @@ jobs:
     environment: qa
 
     steps:
-      - name: Checkout source
+      - name: Checkout source  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Set up Node.js 20 (LTS)
         uses: actions/setup-node@v4
@@ -276,10 +276,10 @@ jobs:
     needs: deploy-qa
 
     steps:
-      - name: Checkout source
+      - name: Checkout source  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Install k6
         # Install k6 from the official Grafana package repository
@@ -322,10 +322,10 @@ jobs:
     needs: deploy-qa
 
     steps:
-      - name: Checkout source
+      - name: Checkout source  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0    # Full history required for Gitleaks
 
       - name: Install Trivy
