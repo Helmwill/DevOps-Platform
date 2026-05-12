@@ -116,6 +116,3 @@ For complete deployment instructions, troubleshooting, and TLS notes see
 | [docs/architecture.md](docs/architecture.md) | Detailed architecture decisions and component interactions |
 | [docs/sprint-plan.md](docs/sprint-plan.md) | Sprint plan and story breakdown |
 | [infra/README.md](infra/README.md) | Full deployment guide, environment variables, troubleshooting |
-
-
-g
