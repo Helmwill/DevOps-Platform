@@ -1,0 +1,25 @@
+# Secrets — the important ones
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local AI/editor tooling
+.claude/
+.vscode/
+.idea/
+
+# Git stray artifacts
+FETCH_HEAD
+ORIG_HEAD
+
+# Node (belt-and-suspenders; sub-dirs already have their own)
+node_modules/
+dist/
+build/
+coverage/
+
+# OS cruft
+.DS_Store
+Thumbs.db
