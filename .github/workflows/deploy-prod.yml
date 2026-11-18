@@ -54,6 +54,34 @@ jobs:
         run: echo "Deploy QA succeeded — proceeding to production approval gate"
 
   # ---------------------------------------------------------------------------
+  # RESOLVE SHA — Read the exact dev SHA that Deploy QA tested.
+  # ---------------------------------------------------------------------------
+  resolve-sha:
+    name: Resolve Tested SHA
+    runs-on: ubuntu-latest
+    needs: guard
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      sha: ${{ steps.read.outputs.sha }}
+    steps:
+      - name: Download tested SHA from Deploy QA run
+        uses: actions/download-artifact@v4
+        with:
+          name: tested-sha
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Read and validate SHA
+        id: read
+        run: |
+          SHA=$(cat tested-sha.txt)
+          echo "$SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "ERROR: invalid SHA in artifact"; exit 1; }
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "Tested SHA: ${SHA}"
+
+  # ---------------------------------------------------------------------------
   # APPROVAL GATE — Manual approval required before production deployment
   # This job targets the `production` GitHub environment, which must be
   # configured with Helmwill as a required reviewer.
@@ -64,7 +92,7 @@ jobs:
   approval-gate:
     name: Approval Gate (Helmwill)
     runs-on: ubuntu-latest
-    needs: guard
+    needs: [guard, resolve-sha]
     # The `production` environment in GitHub must have:
     #   - Required reviewers: Helmwill
     #   - Protection rule: prevent self-review
@@ -77,8 +105,8 @@ jobs:
         # in the GitHub Actions environment protection UI.
         run: |
           echo "Production deployment approved."
-          echo "Deploying commit SHA: ${{ github.event.workflow_run.head_sha }}"
-          echo "Image: ${{ secrets.REGISTRY_URL }}/dashboard:${{ github.event.workflow_run.head_sha }}"
+          echo "Deploying commit SHA: ${{ needs.resolve-sha.outputs.sha }}"
+          echo "Image: ${{ secrets.REGISTRY_URL }}/dashboard:${{ needs.resolve-sha.outputs.sha }}"
 
   # ---------------------------------------------------------------------------
   # DEPLOY PROD — Pull exact image digest to VPS production slot
@@ -91,7 +119,7 @@ jobs:
   deploy-prod:
     name: Deploy to Production
     runs-on: ubuntu-latest
-    needs: approval-gate
+    needs: [approval-gate, resolve-sha]
 
     outputs:
       # Previous image tag captured before this deployment — used by rollback-prod
@@ -114,7 +142,7 @@ jobs:
                      "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
                    "docker inspect dashboard-backend-prod \
                       --format '{{.Config.Image}}' 2>/dev/null \
-                      | cut -d: -f2 || echo '${{ github.event.workflow_run.head_sha }}'")
+                      | cut -d: -f2 || echo '${{ needs.resolve-sha.outputs.sha }}'")
           echo "prev_image_tag=${PREV}" >> "$GITHUB_OUTPUT"
           echo "Previous image tag: $PREV"
 
@@ -140,8 +168,8 @@ jobs:
                   --password-stdin
 
               # Pull the exact images that were verified in QA — no rebuild
-              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-backend:${{ github.event.workflow_run.head_sha }}'
-              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-frontend:${{ github.event.workflow_run.head_sha }}'
+              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-backend:${{ needs.resolve-sha.outputs.sha }}'
+              docker pull '${{ secrets.REGISTRY_URL }}/dashboard-frontend:${{ needs.resolve-sha.outputs.sha }}'
 
               # Ensure VPS has latest compose files from dev branch
               git -C ~/DevOps-Platform fetch origin && git -C ~/DevOps-Platform checkout -B dev origin/dev
@@ -150,7 +178,7 @@ jobs:
               cd ~/DevOps-Platform/prod
 
               # Inject runtime configuration
-              export IMAGE_TAG='${{ github.event.workflow_run.head_sha }}'
+              export IMAGE_TAG='${{ needs.resolve-sha.outputs.sha }}'
               export REGISTRY_URL='${{ secrets.REGISTRY_URL }}'
               export DOMAIN='${{ secrets.DOMAIN }}'
               export DASHBOARD_AUTH=\$(printf '%s' '${_AUTH_B64}' | base64 -d)
@@ -179,13 +207,13 @@ jobs:
   smoke-test-prod:
     name: Smoke Test (Production)
     runs-on: ubuntu-latest
-    needs: deploy-prod
+    needs: [deploy-prod, resolve-sha]
 
     steps:
       - name: Checkout source (for smoke.sh)  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ needs.resolve-sha.outputs.sha }}
 
       - name: Wait for production service to come up
         run: |
@@ -234,7 +262,7 @@ jobs:
   rollback-prod:
     name: Rollback Production (auto)
     runs-on: ubuntu-latest
-    needs: [deploy-prod, smoke-test-prod]
+    needs: [deploy-prod, smoke-test-prod, resolve-sha]
     if: needs.smoke-test-prod.result == 'failure'
 
     steps:
@@ -279,7 +307,7 @@ jobs:
           {
             echo "## :warning: Production Rollback Triggered"
             echo ""
-            echo "Smoke tests failed after deploying \`${{ github.event.workflow_run.head_sha }}\`."
+            echo "Smoke tests failed after deploying \`${{ needs.resolve-sha.outputs.sha }}\`."
             echo "Rolled back to previous image tag: \`${{ needs.deploy-prod.outputs.prev_image_tag }}\`."
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -292,7 +320,7 @@ jobs:
   teardown-qa:
     name: Teardown QA Slot
     runs-on: ubuntu-latest
-    needs: smoke-test-prod
+    needs: [smoke-test-prod, resolve-sha]
 
     steps:
       - name: Write SSH deploy key
@@ -326,7 +354,7 @@ jobs:
       - name: Write deployment summary
         run: |
           DEPLOYED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          SHA="${{ github.event.workflow_run.head_sha }}"
+          SHA="${{ needs.resolve-sha.outputs.sha }}"
 
           # Print to log
           echo "=============================================="
