@@ -97,7 +97,7 @@ jobs:
         run: echo "${{ steps.resolve.outputs.sha }}" > tested-sha.txt
 
       - name: Upload tested SHA
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: tested-sha
           path: tested-sha.txt
@@ -212,7 +212,7 @@ jobs:
 
     steps:
       - name: Checkout source (for ZAP rules file if present)  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ needs.check-images.outputs.sha }}
 
@@ -244,7 +244,7 @@ jobs:
           echo "ZAP scan completed with exit code $ZAP_EXIT (0=clean, 2=warn-only)"
 
       - name: Upload ZAP reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: zap-reports
@@ -264,12 +264,12 @@ jobs:
 
     steps:
       - name: Checkout source  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ needs.check-images.outputs.sha }}
 
       - name: Set up Node.js 20 (LTS)
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
           cache: "npm"
@@ -316,7 +316,7 @@ jobs:
         run: npx jest --ci --testPathPattern=integration --forceExit
 
       - name: Upload integration test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: integration-test-results
@@ -336,7 +336,7 @@ jobs:
 
     steps:
       - name: Checkout source  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ needs.check-images.outputs.sha }}
 
@@ -362,7 +362,7 @@ jobs:
             || (echo "PERFORMANCE HARD BLOCK: p99 latency exceeded 500ms — see k6-results.json" && exit 1)
 
       - name: Upload k6 results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: k6-results
@@ -382,15 +382,19 @@ jobs:
 
     steps:
       - name: Checkout source  # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ needs.check-images.outputs.sha }}
           fetch-depth: 0    # Full history required for Gitleaks
 
       - name: Install Trivy
         run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-            | sh -s -- -b /usr/local/bin
+          TRIVY_VERSION=0.76.2
+          BASE="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}"
+          curl -sfLO "$BASE/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -sfLO "$BASE/trivy_${TRIVY_VERSION}_checksums.txt"
+          grep " trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz$" "trivy_${TRIVY_VERSION}_checksums.txt" | sha256sum -c -
+          sudo tar -xzf "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -C /usr/local/bin trivy
 
       - name: Log in to registry for Trivy image scan
         run: |
@@ -448,7 +452,7 @@ jobs:
             || (echo "SECURITY GATE HARD BLOCK: Gitleaks detected secrets in repository — see gitleaks-results.json" && exit 1)
 
       - name: Upload security gate results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: security-gate-results
