@@ -19,15 +19,15 @@ RUN npm run build
 
 # --- Runtime stage ---
 FROM node:20-alpine AS runtime
+RUN apk upgrade --no-cache
 
 WORKDIR /app
 
-# Upgrade npm to get patched versions of its bundled deps (tar, minimatch, etc.)
-RUN npm install -g npm@latest
 
 # Install production dependencies only
 COPY package*.json ./
 RUN npm ci --omit=dev
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx /root/.npm
 
 # Copy compiled output from build stage
 COPY --from=build /app/dist ./dist
