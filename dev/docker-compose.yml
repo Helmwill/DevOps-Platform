@@ -73,6 +73,7 @@ services:
   dashboard-frontend-dev:
     image: ${REGISTRY_URL}/dashboard-frontend:${IMAGE_TAG:-latest}
     container_name: dashboard-frontend-dev
+    command: ["nginx", "-g", "daemon off; pid /tmp/nginx.pid"]
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
