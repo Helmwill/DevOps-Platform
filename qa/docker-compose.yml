@@ -78,6 +78,7 @@ services:
   dashboard-frontend-qa:
     image: ${REGISTRY_URL}/dashboard-frontend:${IMAGE_TAG:-latest}
     container_name: dashboard-frontend-qa
+    command: ["nginx", "-g", "daemon off; pid /tmp/nginx.pid;"]
     # no restart policy — QA slot is ephemeral and torn down after prod deploy
     restart: "no"
     security_opt:
